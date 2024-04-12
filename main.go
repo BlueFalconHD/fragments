@@ -73,7 +73,7 @@ func (f *Fragment) evaluate() *Fragment {
 		} else if value, exists := f.site.meta[key]; exists {
 			replacements = append(replacements, match[0], value)
 		} else {
-			fmt.Printf("Warning: No replacement found for meta key '%s'\n", key)
+			logWarning(fmt.Sprintf("No meta found for key '%s'", key))
 		}
 	}
 
@@ -83,7 +83,7 @@ func (f *Fragment) evaluate() *Fragment {
 			evaluatedFragment := fragment.evaluate()
 			replacements = append(replacements, match[0], evaluatedFragment.code)
 		} else {
-			fmt.Printf("Warning: No fragment found for key '%s'\n", fragKey)
+			logError(fmt.Sprintf("Fragment '%s' not found", fragKey))
 		}
 	}
 
@@ -111,6 +111,8 @@ Test undefined meta: ${undefined}
 
 @{footer}
 `)
+
+	logBreak()
 
 	logMap(site.meta, "Global Meta")
 	logMap(site.fragments["footer"].meta, "Footer Meta")
