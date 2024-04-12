@@ -112,6 +112,7 @@ Test undefined meta: ${undefined}
 @{footer}
 `)
 
-	fmt.Println("Home Page Output:")
-	fmt.Println(site.fragments["home"].code)
+	logMap(site.meta, "Global Meta")
+	logMap(site.fragments["footer"].meta, "Footer Meta")
+	logMap(site.fragments["home"].meta, "Home Meta")
 }
