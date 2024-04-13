@@ -22,33 +22,30 @@ var ansiCodes = map[string]string{
 	"reset":     "\033[0m",
 }
 
+var logFormats = map[string]string{
+	"warn":      "[&white][[&yellow]WARN[&white]][&reset] %s[&reset]",
+	"error":     "[&white][[&red]ERRO[&white]][&reset] %s[&reset]",
+	"debug":     "[&white][[&blue]DEBG[&white]][&reset] %s[&reset]",
+	"key_value": "[&cyan]%s:[&reset]%s\t%s",
+	"map":       "[&underline][&blue]%s[&reset]",
+	"break":     "",
+}
+
 // parseTags replaces color and effect tags in a string with ANSI escape codes
-func parseTags(s string) string {
+func parseTags(text string) string {
 	tagRegex := regexp.MustCompile(`\[&([a-z]+)]`)
-	return tagRegex.ReplaceAllStringFunc(s, func(tag string) string {
+	return tagRegex.ReplaceAllStringFunc(text, func(tag string) string {
 		key := strings.Trim(tag, "[]&")
-		if code, exists := ansiCodes[key]; exists {
-			return code
-		}
-		return ""
+		return ansiCodes[key] // if the key does not exist, it will return an empty string
 	})
 }
 
-// indent adds spaces to the beginning of each line in a string
-func indent(s string, padding int) string {
-	pad := strings.Repeat(" ", padding*4)
-	return pad + strings.ReplaceAll(s, "\n", "\n"+pad)
-}
-
-// kvfmt formats a key-value pair with ANSI color and style tags
-// It pads the key to ensure values are aligned one tab after the longest key
-func kvfmt(key, value string, maxKeyLen int) string {
-	padding := maxKeyLen - len(key)
-	return parseTags(fmt.Sprintf("[&cyan]%s:[&reset]%s\t%s", key, strings.Repeat(" ", padding), value))
+// printFormatted prints formatted and tagged strings to the console
+func printFormatted(format string, args ...interface{}) {
+	fmt.Println(parseTags(fmt.Sprintf(format, args...)))
 }
 
 // logMap logs a map of string keys to string values with formatting
-// It first calculates the maximum key length to align all values
 func logMap(m map[string]string, name string) {
 	maxKeyLen := 0
 	for k := range m {
@@ -57,22 +54,21 @@ func logMap(m map[string]string, name string) {
 		}
 	}
 
-	fmt.Println(parseTags(fmt.Sprintf("[&underline][&blue]%s[&reset]", name)))
+	printFormatted(logFormats["map"], name)
 	for k, v := range m {
-		fmt.Println(kvfmt(k, v, maxKeyLen))
+		printFormatted("[&cyan]%s:[&reset]%s\t%s", k, strings.Repeat(" ", maxKeyLen-len(k)), v)
 	}
-
 	fmt.Println(ansiCodes["reset"])
 }
 
 func logWarning(msg string) {
-	fmt.Println(parseTags(fmt.Sprintf("[&white][[&yellow]WARN[&white]][&reset] %s[&reset]", msg)))
+	printFormatted(logFormats["warn"], msg)
 }
 
 func logError(msg string) {
-	fmt.Println(parseTags(fmt.Sprintf("[&white][[&red]ERRO[&white]][&reset] %s[&reset]", msg)))
+	printFormatted(logFormats["error"], msg)
 }
 
 func logBreak() {
-	fmt.Println("")
+	fmt.Println(logFormats["break"])
 }
