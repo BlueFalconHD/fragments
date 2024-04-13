@@ -34,11 +34,12 @@ type Site struct {
 }
 
 func (s *Site) createFragment(name string, code string) {
-	f := &Fragment{code: code, site: s}
+	f := &Fragment{name: name, code: code, site: s}
 	s.fragments[name] = f.evaluate()
 }
 
 type Fragment struct {
+	name string
 	code string
 	meta metaMap
 	site *Site
@@ -88,7 +89,11 @@ func (f *Fragment) evaluate() *Fragment {
 	}
 
 	content := strings.NewReplacer(replacements...).Replace(f.code)
-	return &Fragment{code: content, meta: localmeta, site: f.site}
+	return &Fragment{code: content, meta: localmeta, site: f.site, name: f.name}
+}
+
+func (f *Fragment) logMeta() {
+	logMap(f.meta, f.name)
 }
 
 func main() {
@@ -115,6 +120,9 @@ Test undefined meta: ${undefined}
 	logBreak()
 
 	logMap(site.meta, "Global Meta")
-	logMap(site.fragments["footer"].meta, "Footer Meta")
-	logMap(site.fragments["home"].meta, "Home Meta")
+
+	// log meta of all fragments
+	for _, fragment := range site.fragments {
+		fragment.logMeta()
+	}
 }
