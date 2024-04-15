@@ -33,9 +33,10 @@ type Site struct {
 	meta      metaMap
 }
 
-func (s *Site) createFragment(name string, code string) {
+func (s *Site) createFragment(name string, code string) *Fragment {
 	f := &Fragment{name: name, code: code, site: s}
-	s.fragments[name] = f.evaluate()
+	s.fragments[name], _ = f.evaluate()
+	return f
 }
 
 type Fragment struct {
@@ -45,13 +46,15 @@ type Fragment struct {
 	site *Site
 }
 
-func (f *Fragment) evaluate() *Fragment {
+func (f *Fragment) evaluate() (*Fragment, string) {
 	localmeta := metaMap{}
 
 	if strings.Contains(f.code, "---") {
 		parts := strings.SplitN(f.code, "---", 3)
 		metaBlock := parts[1]
 		f.code = parts[2]
+		// trim leading and trailing whitespace from f.code
+		f.code = strings.TrimSpace(f.code)
 		metaLines := strings.Split(metaBlock, "\n")
 		for _, line := range metaLines {
 			if strings.Contains(line, ":") {
@@ -81,7 +84,7 @@ func (f *Fragment) evaluate() *Fragment {
 	for _, match := range fragRegex.FindAllStringSubmatch(f.code, -1) {
 		fragKey := match[1]
 		if fragment, ok := f.site.fragments[fragKey]; ok {
-			evaluatedFragment := fragment.evaluate()
+			evaluatedFragment, _ := fragment.evaluate()
 			replacements = append(replacements, match[0], evaluatedFragment.code)
 		} else {
 			logError(fmt.Sprintf("Fragment '%s' not found", fragKey))
@@ -89,11 +92,17 @@ func (f *Fragment) evaluate() *Fragment {
 	}
 
 	content := strings.NewReplacer(replacements...).Replace(f.code)
-	return &Fragment{code: content, meta: localmeta, site: f.site, name: f.name}
+	return &Fragment{code: content, meta: localmeta, site: f.site, name: f.name}, content
 }
-
 func (f *Fragment) logMeta() {
 	logMap(f.meta, f.name)
+}
+func (f *Fragment) runScript(scriptName string) {
+	if script, exists := scripts[scriptName]; exists {
+		script.run(f)
+	} else {
+		logError(fmt.Sprintf("Script '%s' not found", scriptName))
+	}
 }
 
 func main() {
@@ -116,6 +125,11 @@ Test undefined meta: ${undefined}
 
 @{footer}
 `)
+	site.createFragment("about", `# About Us
+This is the about page.
+
+@{footer}
+`)
 
 	logBreak()
 
@@ -125,4 +139,9 @@ Test undefined meta: ${undefined}
 	for _, fragment := range site.fragments {
 		fragment.logMeta()
 	}
+
+	logBreak()
+
+	site.fragments["about"].runScript("RenderMarkdown")
+	fmt.Println(site.fragments["about"].code)
 }
