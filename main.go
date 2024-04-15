@@ -31,6 +31,19 @@ type Site struct {
 	meta      metaMap
 }
 
+func mainConfigStuff() {
+	// TODO --------------------------------------------------------------------------------------------------------
+	// 1. read files recursively 1 level deep from the current directory
+	//     - Check if the file has the .frag, .fragment extension
+	//     - Read the file content
+	//     - Create a fragment with the file name (without extension) and the file content
+	// 2. Read the config file
+	//     - Read the global meta
+	//     - Read the pages
+	//     - For each page, read the file name and scripts, and add them to the fragment specified by the file name
+	// TODO --------------------------------------------------------------------------------------------------------
+}
+
 func main() {
 	site := site()
 	site.createFragment("footer", `

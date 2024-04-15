@@ -18,4 +18,6 @@ var scripts = map[string]*Script{
 			f.code = string(blackfriday.Run([]byte(f.code)))
 		},
 	},
+
+	// ADD YOUR OWN SCRIPTS HERE
 }
