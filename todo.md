@@ -3,7 +3,8 @@
 
 - [ ] implement hierarchy tracking
 - [ ] lua embedded
-  - [ ] first prototype using github.com/rosbit/luago
+  - [x] first prototype using github.com/rosbit/luago
+    - no clear way to use this effectively, using gopher-lua and gopher-luar will work better
   - [ ] introduce fragments 'library' into lua environment
     - [ ] fragment type
     - [ ] 'this' instance injection

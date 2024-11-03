@@ -31,72 +31,8 @@ type Site struct {
 	meta      metaMap
 }
 
-func mainConfigStuff() {
-	// TODO --------------------------------------------------------------------------------------------------------
-	// 1. read files recursively 1 level deep from the current directory
-	//     - Check if the file has the .frag, .fragment extension
-	//     - Read the file content
-	//     - Create a fragment with the file name (without extension) and the file content
-	// 2. Read the config file
-	//     - Read the global meta
-	//     - Read the pages
-	//     - For each page, read the file name and scripts, and add them to the fragment specified by the file name
-	// TODO --------------------------------------------------------------------------------------------------------
-}
-
 func main() {
-	site := site()
-	site.createFragment("footer", `
----
-dateUpdated: ${date}
----
-<footer>Last updated on ${date}.</footer>
-@{test}
-`)
+	// site := site()
 
-	site.createFragment("home", `
----
-title: Home/Welcome
-siteName: Example Site
----
-Welcome to ${siteName}.
-Today's date is ${date}.
-Test undefined meta: ${undefined}
-
-@{footer}
-`)
-	site.createFragment("about", `# About Us
-This is the about page.
-
-@{footer}
-`)
-
-	// script should replace "Bla" with "Hello"
-	site.createFragment("test", `
----
-shellCmd: cat ${@} | sed 's/Bla/Hello/g'
----
-This is the content of the fragment before the script is run.
-Bla
-Bla
-Bla`)
-
-	logBreak()
-
-	logMap(site.meta, "Global Meta")
-
-	// log meta of all fragments
-	for _, fragment := range site.fragments {
-		fragment.logMeta()
-	}
-
-	logBreak()
-
-	site.fragments["about"].runScript("RenderMarkdown")
-
-	fmt.Println(site.fragments["about"].code)
-
-	site.fragments["test"].runScript("ShellCmd")
-
-	fmt.Println(site.fragments["test"].code)
+	testLua()
 }
