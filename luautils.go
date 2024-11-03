@@ -40,6 +40,8 @@ func goToLuaType(L *lua.LState, v interface{}) lua.LValue {
 		return lua.LNumber(v.(float64))
 	case string:
 		return lua.LString(v.(string))
+	case map[string]interface{}:
+		return goMapToITTable(v.(map[string]interface{})).table()
 	case *IntermediateTable:
 		return v.(*IntermediateTable).table()
 	case *lua.LFunction:

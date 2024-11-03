@@ -363,12 +363,22 @@ func testLua() {
 	fragment.LocalMeta.CoreMap["title"] = "Hello, Lua!"
 	// Set the global meta data for the fragment
 	fragment.GlobalMeta.CoreMap["isCool"] = false
+	// Set a table in the meta data
+	fragment.LocalMeta.CoreMap["table"] = map[string]interface{}{
+		"key": "value",
+	}
 
 	// Run a Lua script that prints the fragment's title and isCool status
 	if err := L.DoString(`
 		print(f:getMeta("title"))
 		print(f:getGlobalMeta("isCool"))
+		-- Access the table in the meta data
+		print(f:getMeta("table").key)
+		f:setMeta("table", {key = "new value"})
 	`); err != nil {
 		panic(err)
 	}
+
+	// Access the value of the table in the meta data
+	fmt.Println("Fragment table key:", fragment.LocalMeta.CoreMap["table"].(*IntermediateTable).CoreMap["key"])
 }

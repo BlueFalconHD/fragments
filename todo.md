@@ -149,11 +149,10 @@ this.builder {
     local postDir = "posts/"
     local posts = {}
     -- get every post in the posts directory
-
-    for i = 1, 5 do
-      local post = fragment:templated(postDir .. i .. ".frag", "fragment/postCard.frag")
+    fs:readDir(postDir):forEach(function(file)
+      local post = fragment:templated(postDir .. file, "fragment/postCard.frag")
       table.insert(posts, post)
-    end
+    end)
     
     -- return all of the posts joined by newlines
     return table.concat(posts, "\n")
