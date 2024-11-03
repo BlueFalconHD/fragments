@@ -366,6 +366,9 @@ func testLua() {
 	// Set a table in the meta data
 	fragment.LocalMeta.CoreMap["table"] = map[string]interface{}{
 		"key": "value",
+		"t": map[string]interface{}{
+			"key": "value",
+		},
 	}
 
 	// Run a Lua script that prints the fragment's title and isCool status
@@ -381,4 +384,7 @@ func testLua() {
 
 	// Access the value of the table in the meta data
 	fmt.Println("Fragment table key:", fragment.LocalMeta.CoreMap["table"].(*IntermediateTable).CoreMap["key"])
+	// TODO: 	fix this panic: interface conversion: interface {} is nil, not map[string]interface {}
+	// 			possibly by just recursively aggressively converting any map[string]interface{} to IntermediateTable
+	fmt.Println("Fragment table key:", fragment.LocalMeta.CoreMap["table"].(*IntermediateTable).CoreMap["t"].(map[string]interface{})["key"])
 }
