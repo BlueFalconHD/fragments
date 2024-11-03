@@ -51,6 +51,7 @@ func main() {
 dateUpdated: ${date}
 ---
 <footer>Last updated on ${date}.</footer>
+@{test}
 `)
 
 	site.createFragment("home", `
@@ -70,6 +71,16 @@ This is the about page.
 @{footer}
 `)
 
+	// script should replace "Bla" with "Hello"
+	site.createFragment("test", `
+---
+shellCmd: cat ${@} | sed 's/Bla/Hello/g'
+---
+This is the content of the fragment before the script is run.
+Bla
+Bla
+Bla`)
+
 	logBreak()
 
 	logMap(site.meta, "Global Meta")
@@ -82,5 +93,10 @@ This is the about page.
 	logBreak()
 
 	site.fragments["about"].runScript("RenderMarkdown")
+
 	fmt.Println(site.fragments["about"].code)
+
+	site.fragments["test"].runScript("ShellCmd")
+
+	fmt.Println(site.fragments["test"].code)
 }

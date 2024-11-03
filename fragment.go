@@ -18,10 +18,11 @@ type fragmentOptions struct {
 	scripts      []string
 }
 type Fragment struct {
-	name string
-	code string
-	meta metaMap
-	site *Site
+	name   string
+	code   string
+	meta   metaMap
+	fspath string
+	site   *Site
 
 	options fragmentOptions
 }
