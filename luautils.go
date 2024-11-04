@@ -1,87 +1,134 @@
 package main
 
-// lua utils
-// to make using gopher-lua less like being in hell
-
 import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-func luaToGoType(L *lua.LState, lv lua.LValue) interface{} {
+type CoreType interface {
+	goType() interface{}
+	luaType(L *lua.LState) lua.LValue
+}
+
+type CoreNil struct{}
+
+func NewCoreNil() *CoreNil                          { return &CoreNil{} }
+func NewCoreNilL(lv lua.LValue) *CoreNil            { return &CoreNil{} }
+func (c *CoreNil) goType() interface{}              { return nil }
+func (c *CoreNil) luaType(L *lua.LState) lua.LValue { return lua.LNil }
+
+type CoreBool struct{ v bool }
+
+func NewCoreBool(b bool) *CoreBool { return &CoreBool{v: b} }
+func NewCoreBoolL(lv lua.LValue) *CoreBool {
+	return &CoreBool{v: bool(lv.(lua.LBool))}
+}
+func (c *CoreBool) goType() interface{}              { return c.v }
+func (c *CoreBool) luaType(L *lua.LState) lua.LValue { return lua.LBool(c.v) }
+
+type CoreNumber struct{ v float64 }
+
+func NewCoreNumber(n float64) *CoreNumber { return &CoreNumber{v: n} }
+func NewCoreNumberL(lv lua.LValue) *CoreNumber {
+	return &CoreNumber{v: float64(lv.(lua.LNumber))}
+}
+func (c *CoreNumber) goType() interface{}              { return c.v }
+func (c *CoreNumber) luaType(L *lua.LState) lua.LValue { return lua.LNumber(c.v) }
+
+type CoreString struct{ v string }
+
+func NewCoreString(s string) *CoreString { return &CoreString{v: s} }
+func NewCoreStringL(lv lua.LValue) *CoreString {
+	return &CoreString{v: lv.String()}
+}
+func (c *CoreString) goType() interface{}              { return c.v }
+func (c *CoreString) luaType(L *lua.LState) lua.LValue { return lua.LString(c.v) }
+
+type CoreTable struct{ v map[string]CoreType }
+
+func NewCoreTable(m map[string]CoreType) *CoreTable { return &CoreTable{v: m} }
+func NewCoreTableL(lv *lua.LTable) *CoreTable {
+	m := make(map[string]CoreType)
+	lv.ForEach(func(k, v lua.LValue) {
+		m[k.String()] = luaToCoreType(v)
+	})
+	return &CoreTable{v: m}
+}
+func (c *CoreTable) goType() interface{} {
+	goMap := make(map[string]interface{})
+	for k, v := range c.v {
+		goMap[k] = v.goType()
+	}
+	return goMap
+}
+func (c *CoreTable) luaType(L *lua.LState) lua.LValue {
+	lt := L.NewTable()
+	for k, v := range c.v {
+		lt.RawSetString(k, v.luaType(L))
+	}
+	return lt
+}
+
+type CoreFunction struct{ v *lua.LFunction }
+
+func NewCoreFunction(f *lua.LFunction) *CoreFunction { return &CoreFunction{v: f} }
+func NewCoreFunctionL(lv lua.LValue) *CoreFunction {
+	return &CoreFunction{v: lv.(*lua.LFunction)}
+}
+func (c *CoreFunction) goType() interface{}              { return c.v }
+func (c *CoreFunction) luaType(L *lua.LState) lua.LValue { return c.v }
+
+type CoreUserData struct{ v *lua.LUserData }
+
+func NewCoreUserData(u *lua.LUserData) *CoreUserData { return &CoreUserData{v: u} }
+func (c *CoreUserData) goType() interface{}          { return c.v }
+func (c *CoreUserData) luaType(L *lua.LState) lua.LValue {
+	return c.v
+}
+
+func luaToCoreType(lv lua.LValue) CoreType {
 	switch lv.Type() {
 	case lua.LTNil:
-		return nil
+		return NewCoreNilL(lv)
 	case lua.LTBool:
-		return lv.(lua.LBool)
+		return NewCoreBoolL(lv)
 	case lua.LTNumber:
-		// LTNumber is at core a simple float64
-		return lv.(lua.LNumber)
+		return NewCoreNumberL(lv)
 	case lua.LTString:
-		return lv.(lua.LString)
+		return NewCoreStringL(lv)
 	case lua.LTTable:
-		return luaTableToITTable(L, lv.(*lua.LTable))
-	case lua.LTFunction: // this one doesn't really convert that well so we'll just return the ref to the core lua function
-		return lv.(*lua.LFunction)
+		return NewCoreTableL(lv.(*lua.LTable))
+	case lua.LTFunction:
+		return NewCoreFunctionL(lv)
 	case lua.LTUserData:
-		return lv.(*lua.LUserData).Value
+		return NewCoreUserData(lv.(*lua.LUserData))
 	default:
-		// this is a catch-all for types that we don't know how to convert
-		return nil
+		return NewCoreNil()
 	}
 }
 
-func goToLuaType(L *lua.LState, v interface{}) lua.LValue {
-	switch v.(type) {
+func goToCoreType(v interface{}) CoreType {
+	switch val := v.(type) {
 	case nil:
-		return lua.LNil
+		return NewCoreNil()
 	case bool:
-		return lua.LBool(v.(bool))
+		return NewCoreBool(val)
 	case float64:
-		return lua.LNumber(v.(float64))
+		return NewCoreNumber(val)
+	case int:
+		return NewCoreNumber(float64(val))
 	case string:
-		return lua.LString(v.(string))
+		return NewCoreString(val)
+	case map[string]CoreType:
+		return NewCoreTable(val)
 	case map[string]interface{}:
-		return goMapToITTable(v.(map[string]interface{})).table()
-	case *IntermediateTable:
-		return v.(*IntermediateTable).table()
-	case *lua.LFunction:
-		return v.(*lua.LFunction)
-	case *lua.LUserData:
-		return v.(*lua.LUserData)
+		coreMap := make(map[string]CoreType)
+		for k, v := range val {
+			coreMap[k] = goToCoreType(v)
+		}
+		return NewCoreTable(coreMap)
+	case CoreType:
+		return val
 	default:
-		return lua.LNil
+		return NewCoreNil()
 	}
-}
-
-// IntermediateTable is a mix between the LTable and map[string]interface{} types
-type IntermediateTable struct {
-	CoreMap map[string]interface{} // CoreMap stores the actual data
-}
-
-func luaTableToITTable(L *lua.LState, lt *lua.LTable) *IntermediateTable {
-	coreMap := make(map[string]interface{})
-
-	lt.ForEach(func(k, v lua.LValue) {
-		coreMap[k.String()] = luaToGoType(L, v)
-	})
-
-	return &IntermediateTable{
-		CoreMap: coreMap,
-	}
-}
-
-func goMapToITTable(m map[string]interface{}) *IntermediateTable {
-	return &IntermediateTable{
-		CoreMap: m,
-	}
-}
-
-func (it *IntermediateTable) table() lua.LValue {
-	lt := lua.LTable{}
-
-	for k, v := range it.CoreMap {
-		lt.RawSetString(k, goToLuaType(nil, v))
-	}
-
-	return &lt
 }
