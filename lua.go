@@ -244,6 +244,8 @@ func testLua() {
 		
 		-- Checking if parent of parent is nil
 		print("Parent's parent:", parent:parent())
+
+	
 	`); err != nil {
 		panic(err)
 	}
