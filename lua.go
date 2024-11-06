@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"github.com/charmbracelet/log"
 	"strings"
 
 	lua "github.com/yuin/gopher-lua"
@@ -11,7 +11,7 @@ type LFragment struct {
 	Fragment   *Fragment
 	Parent     *LFragment
 	LocalMeta  *CoreTable
-	GlobalMeta *CoreTable
+	SharedMeta *CoreTable
 }
 
 func (f *LFragment) getFragmentTree() []*LFragment {
@@ -36,6 +36,13 @@ func registerFragmentType(L *lua.LState) {
 	L.SetField(mt, "__newindex", L.NewFunction(fragmentNewIndex))
 }
 
+func (f *LFragment) registerThisFragmentAs(L *lua.LState, name string) {
+	ud := L.NewUserData()
+	ud.Value = f
+	L.SetMetatable(ud, L.GetTypeMetatable(luaFragmentTypeName))
+	L.SetGlobal(name, ud)
+}
+
 func newFragment(L *lua.LState) int {
 	var parent *LFragment
 	if L.GetTop() > 0 {
@@ -52,7 +59,7 @@ func newFragment(L *lua.LState) int {
 		Fragment:   nil,
 		Parent:     parent,
 		LocalMeta:  NewCoreTable(make(map[string]CoreType)),
-		GlobalMeta: NewCoreTable(make(map[string]CoreType)),
+		SharedMeta: NewCoreTable(make(map[string]CoreType)),
 	}
 	ud := L.NewUserData()
 	ud.Value = f
@@ -72,9 +79,9 @@ func checkFragment(L *lua.LState) *LFragment {
 
 var fragmentMethods = map[string]lua.LGFunction{
 	"getMeta":       fragmentGetMeta,
-	"getGlobalMeta": fragmentGetGlobalMeta,
+	"getSharedMeta": fragmentGetSharedMeta,
 	"setMeta":       fragmentSetMeta,
-	"setGlobalMeta": fragmentSetGlobalMeta,
+	"setSharedMeta": fragmentSetSharedMeta,
 	"parent":        fragmentParent,
 }
 
@@ -91,15 +98,11 @@ func fragmentIndex(L *lua.LState) int {
 	// Handle properties
 	switch field {
 	case "name":
-		L.Push(lua.LString(f.Fragment.name))
+		L.Push(NewCoreString(f.Fragment.Name).luaType(L))
+	case "depth":
+		L.Push(NewCoreNumber(float64(f.Fragment.Depth)).luaType(L))
 	case "code":
-		L.Push(lua.LString(f.Fragment.code))
-	case "fspath":
-		L.Push(lua.LString(f.Fragment.fspath))
-	case "site":
-		L.ArgError(2, "site is a custom type that hasn't been implemented yet")
-	case "options":
-		L.ArgError(2, "options is a custom type that hasn't been implemented yet")
+		L.Push(NewCoreString(f.Fragment.Code).luaType(L))
 	default:
 		L.Push(lua.LNil)
 	}
@@ -118,11 +121,11 @@ func fragmentNewIndex(L *lua.LState) int {
 		} else {
 			L.ArgError(3, "table expected for localMeta")
 		}
-	case "globalMeta":
+	case "sharedMeta":
 		if value.Type() == lua.LTTable {
-			f.GlobalMeta = NewCoreTableL(value.(*lua.LTable))
+			f.SharedMeta = NewCoreTableL(value.(*lua.LTable))
 		} else {
-			L.ArgError(3, "table expected for globalMeta")
+			L.ArgError(3, "table expected for sharedMeta")
 		}
 	default:
 		L.ArgError(2, "unexpected field: "+field)
@@ -138,32 +141,40 @@ func fragmentGetMeta(L *lua.LState) int {
 	return 1
 }
 
-func fragmentGetGlobalMeta(L *lua.LState) int {
+func fragmentGetSharedMeta(L *lua.LState) int {
 	f := checkFragment(L)
 	key := L.CheckString(2)
-	value := getNestedValue(f.GlobalMeta, key)
+	value := getNestedValue(f.SharedMeta, key)
 	L.Push(value.luaType(L))
 	return 1
 }
 
 func fragmentSetMeta(L *lua.LState) int {
 	f := checkFragment(L)
+
+	if f.Fragment.EvalState != PENDING {
+		log.Warn("Setting metadata on a partially evaluated fragment will not trigger re-evaluation of previous computations.")
+	}
+
+	// [x] TODO: add proper warning log
+
 	key := L.CheckString(2)
 	value := luaToCoreType(L.Get(3))
 	setNestedValue(f.LocalMeta, key, value)
 	return 0
 }
 
-func fragmentSetGlobalMeta(L *lua.LState) int {
+func fragmentSetSharedMeta(L *lua.LState) int {
 	f := checkFragment(L)
 	key := L.CheckString(2)
 	value := luaToCoreType(L.Get(3))
-	setNestedValue(f.GlobalMeta, key, value)
+	setNestedValue(f.SharedMeta, key, value)
 	return 0
 }
 
 func fragmentParent(L *lua.LState) int {
 	f := checkFragment(L)
+
 	if f.Parent != nil {
 		ud := L.NewUserData()
 		ud.Value = f.Parent
@@ -225,53 +236,49 @@ func setNestedValue(table *CoreTable, key string, value CoreType) {
 	}
 }
 
+const fc = `
+-- PLACEHOLDER LUA
+=====
+Fragment content.
+
+${key}
+
+@{header}
+`
+
 func testLua() {
+
+	pf := &Fragment{
+		Name:       "Parent Fragment",
+		Code:       fc,
+		Depth:      0,
+		Parent:     nil,
+		LocalMeta:  *NewEmptyCoreTable(),
+		SharedMeta: NewEmptyCoreTable(),
+	}
+
+	pf.EvalState = EVALUATING
+
+	pfl := pf.MakeLFragment(nil)
+
+	cf := pf.MakeChild("Child Fragment", "Child Fragment Code")
+
+	cfl := cf.MakeLFragment(pfl)
+
 	L := lua.NewState()
 	defer L.Close()
 	registerFragmentType(L)
+
+	// set 'this' global in lua to cf
+	cfl.registerThisFragmentAs(L, "this")
+
 	if err := L.DoString(`
-		-- Creating parent fragment
-		parent = fragment.new()
-		parent:setMeta("title", "Parent Fragment")
-		
-		-- Creating child fragment with parent
-		child = fragment.new(parent)
-		child:setMeta("title", "Child Fragment")
-		
-		-- Accessing parent from child
-		print("Child's title:", child:getMeta("title"))
-		print("Parent's title via child:", child:parent():getMeta("title"))
-		
-		-- Checking if parent of parent is nil
-		print("Parent's parent:", parent:parent())
-
-	
+		this:setMeta("key", "value")
+		this:parent():setSharedMeta("key", "shared")
+		this:parent():setMeta("key", "local")
 	`); err != nil {
-		panic(err)
+		log.Error(err)
 	}
 
-	// Retrieve the child Fragment object from Lua
-	childUd := L.GetGlobal("child")
-	luaChildUd, ok := childUd.(*lua.LUserData)
-	if !ok {
-		fmt.Println("child is not a userdata")
-		return
-	}
-
-	childFragment, ok := luaChildUd.Value.(*LFragment)
-	if !ok {
-		fmt.Println("child ud.Value is not a *LFragment")
-		return
-	}
-
-	// Access the meta data for the child fragment
-	fmt.Println("Child Fragment title:", childFragment.LocalMeta.v["title"].goType())
-
-	// Access the parent fragment from the child
-	if childFragment.Parent != nil {
-		parentFragment := childFragment.Parent
-		fmt.Println("Parent Fragment title:", parentFragment.LocalMeta.v["title"].goType())
-	} else {
-		fmt.Println("Child fragment has no parent.")
-	}
+	log.Info(pf.Evaluate())
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"github.com/k0kubun/pp/v3"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -45,6 +47,7 @@ func (c *CoreString) luaType(L *lua.LState) lua.LValue { return lua.LString(c.v)
 
 type CoreTable struct{ v map[string]CoreType }
 
+func NewEmptyCoreTable() *CoreTable                 { return &CoreTable{v: make(map[string]CoreType)} }
 func NewCoreTable(m map[string]CoreType) *CoreTable { return &CoreTable{v: m} }
 func NewCoreTableL(lv *lua.LTable) *CoreTable {
 	m := make(map[string]CoreType)
@@ -66,6 +69,13 @@ func (c *CoreTable) luaType(L *lua.LState) lua.LValue {
 		lt.RawSetString(k, v.luaType(L))
 	}
 	return lt
+}
+func (c *CoreTable) prettyPrint() {
+	_, err := pp.Print(c.goType())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 }
 
 type CoreFunction struct{ v *lua.LFunction }
@@ -130,5 +140,29 @@ func goToCoreType(v interface{}) CoreType {
 		return val
 	default:
 		return NewCoreNil()
+	}
+}
+
+// turn a generic/any type into a string.
+func convertToString(v interface{}) string {
+	switch val := v.(type) {
+	case nil:
+		return ""
+	case bool:
+		return fmt.Sprintf("%t", val)
+	case float64:
+		return fmt.Sprintf("%f", val)
+	case int:
+		return fmt.Sprintf("%d", val)
+	case string:
+		return val
+	case map[string]CoreType:
+		return fmt.Sprintf("%v", val)
+	case map[string]interface{}:
+		return fmt.Sprintf("%v", val)
+	case CoreType:
+		return fmt.Sprintf("%v", val)
+	default:
+		return ""
 	}
 }

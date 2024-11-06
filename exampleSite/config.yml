@@ -1,0 +1,10 @@
+# fragments configuration
+
+# directory where fragments are found
+fragments: "fragment"
+
+# default page template
+template: "fragment/page.frag"
+
+# directory where pages are stored
+pages: "page"
