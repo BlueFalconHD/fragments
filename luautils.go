@@ -84,8 +84,8 @@ func (c *CoreTable) merge(other *CoreTable) {
 			existingTable, isExistingTable := existingVal.(*CoreTable)
 			otherTable, isOtherTable := v.(*CoreTable)
 
-			if isExistingTable && isOtherTable {
-				// Both are CoreTable, perform recursive merge
+			if isExistingTable && existingTable != nil && isOtherTable && otherTable != nil {
+				// Both are CoreTable and not nil, perform recursive merge
 				existingTable.merge(otherTable)
 			} else {
 				// Either not CoreTable or types differ, overwrite with other.v[k]

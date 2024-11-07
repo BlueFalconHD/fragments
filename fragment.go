@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"github.com/charmbracelet/log"
+	lua "github.com/yuin/gopher-lua"
 	"os"
 	"regexp"
 	"strings"
@@ -36,6 +38,7 @@ type Fragment struct {
 	SharedMeta *CoreTable
 	EvalState  FragmentEvaluationState
 	Builders   CoreTable
+	LState     *lua.LState
 }
 
 func (f *Fragment) MakeChild(name string, code string) *Fragment {
@@ -127,6 +130,10 @@ Render Page:
 */
 
 func (f *Fragment) Evaluate() string {
+	// Setup lua state
+	f.CreateState()
+	defer f.LState.Close()
+
 	parts := strings.Split(f.Code, "---")
 	var lua, code string
 
@@ -142,7 +149,10 @@ func (f *Fragment) Evaluate() string {
 
 	// Evaluate lua if it's present
 	if lua != "" {
-		f.RunLua(lua)
+		err := f.LState.DoString(lua)
+		if err != nil {
+			log.Error(err)
+		}
 	}
 
 	// Replace references in fragment code to meta with actual values
@@ -158,6 +168,9 @@ func (f *Fragment) Evaluate() string {
 
 	for _, ref := range builderReferences {
 		builderName := ref[1]
+
+		//
+
 		code = strings.ReplaceAll(code, "*{"+builderName+"}", "<BUILDER TODO>")
 	}
 

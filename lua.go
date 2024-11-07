@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/charmbracelet/log"
 	libs "github.com/vadv/gopher-lua-libs"
 	lua "github.com/yuin/gopher-lua"
@@ -12,6 +13,7 @@ type LFragment struct {
 	Parent     *LFragment
 	LocalMeta  *CoreTable
 	SharedMeta *CoreTable
+	Builders   *CoreTable
 }
 
 func (f *LFragment) getFragmentTree() []*LFragment {
@@ -60,6 +62,7 @@ func newFragment(L *lua.LState) int {
 		Parent:     parent,
 		LocalMeta:  NewCoreTable(make(map[string]CoreType)),
 		SharedMeta: NewCoreTable(make(map[string]CoreType)),
+		Builders:   NewCoreTable(make(map[string]CoreType)),
 	}
 	ud := L.NewUserData()
 	ud.Value = f
@@ -85,6 +88,7 @@ var fragmentMethods = map[string]lua.LGFunction{
 	"setSharedMeta": fragmentSetSharedMeta,
 	"sharedMeta":    fragmentMergeSharedMeta,
 	"parent":        fragmentParent,
+	"builders":      fragmentMergeBuilders,
 }
 
 func fragmentIndex(L *lua.LState) int {
@@ -227,6 +231,33 @@ func fragmentParent(L *lua.LState) int {
 	return 1
 }
 
+func fragmentMergeBuilders(L *lua.LState) int {
+	//_ = checkFragment(L)
+	f := checkFragment(L)
+	if L.GetTop() < 2 {
+		L.ArgError(2, "table expected")
+	}
+
+	if L.Get(2).Type() != lua.LTTable {
+		L.ArgError(2, "table expected")
+	}
+
+	table := L.CheckTable(2)
+	gt := NewCoreTableL(table)
+
+	for key, k := range gt.v {
+		lv := k.luaType(L)
+		if _, ok := lv.(*lua.LFunction); !ok {
+			L.ArgError(2, fmt.Sprintf("expected function at key '%s'", key))
+		}
+	}
+
+	// TODO-URGENT: Fix the nil pointer dereference here
+	// Merge the builders table
+	f.Builders.merge(gt)
+	return 0
+}
+
 // Helper functions to handle nested keys
 func getNestedValue(table *CoreTable, key string) CoreType {
 	keys := strings.Split(key, ".")
@@ -283,6 +314,12 @@ this:meta {
 	key = "NEW VALUE"
 }
 
+this:builders {
+	builder = function()
+		print("Builder function called")
+	end
+}
+
 ---
 Fragment content.
 
@@ -291,6 +328,8 @@ ${key}
 @{header}
 
 @{sub/test}
+
+*{builder}
 `
 
 func testLua() {
@@ -302,6 +341,8 @@ func testLua() {
 		Parent:     nil,
 		LocalMeta:  *NewEmptyCoreTable(),
 		SharedMeta: NewEmptyCoreTable(),
+		Builders:   *NewEmptyCoreTable(),
+		LState:     nil,
 	}
 
 	pf.EvalState = EVALUATING
@@ -311,16 +352,11 @@ func testLua() {
 	print(pf.Evaluate())
 }
 
-func (f *Fragment) RunLua(l string) {
+func (f *Fragment) CreateState() {
 	lf := f.MakeLFragment()
 	L := lua.NewState()
-	defer L.Close()
 	registerFragmentType(L)
 	libs.Preload(L)
 	lf.registerThisFragmentAs(L, "this")
-
-	err := L.DoString(l)
-	if err != nil {
-		log.Error(err)
-	}
+	f.LState = L
 }
