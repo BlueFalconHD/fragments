@@ -2,9 +2,9 @@ package main
 
 import (
 	"github.com/charmbracelet/log"
-	"strings"
-
+	libs "github.com/vadv/gopher-lua-libs"
 	lua "github.com/yuin/gopher-lua"
+	"strings"
 )
 
 type LFragment struct {
@@ -156,8 +156,6 @@ func fragmentSetMeta(L *lua.LState) int {
 		log.Warn("Setting metadata on a partially evaluated fragment will not trigger re-evaluation of previous computations.")
 	}
 
-	// [x] TODO: add proper warning log
-
 	key := L.CheckString(2)
 	value := luaToCoreType(L.Get(3))
 	setNestedValue(f.LocalMeta, key, value)
@@ -244,6 +242,8 @@ Fragment content.
 ${key}
 
 @{header}
+
+@{sub/test}
 `
 
 func testLua() {
@@ -259,26 +259,22 @@ func testLua() {
 
 	pf.EvalState = EVALUATING
 
-	pfl := pf.MakeLFragment(nil)
+	pf.LocalMeta.v["key"] = NewCoreString("This is a key")
 
-	cf := pf.MakeChild("Child Fragment", "Child Fragment Code")
+	pf.RunLua(`print(this:getMeta("key"))`)
 
-	cfl := cf.MakeLFragment(pfl)
+}
 
+func (f *Fragment) RunLua(l string) {
+	lf := f.MakeLFragment()
 	L := lua.NewState()
 	defer L.Close()
 	registerFragmentType(L)
+	libs.Preload(L)
+	lf.registerThisFragmentAs(L, "this")
 
-	// set 'this' global in lua to cf
-	cfl.registerThisFragmentAs(L, "this")
-
-	if err := L.DoString(`
-		this:setMeta("key", "value")
-		this:parent():setSharedMeta("key", "shared")
-		this:parent():setMeta("key", "local")
-	`); err != nil {
+	err := L.DoString(l)
+	if err != nil {
 		log.Error(err)
 	}
-
-	log.Info(pf.Evaluate())
 }

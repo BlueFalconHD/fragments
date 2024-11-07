@@ -5,11 +5,10 @@
 - [ ] lua embedded
   - [x] ~~first prototype using github.com/rosbit/luago~~
     - no clear way to use this effectively, using gopher-lua ~~and gopher-luar~~ will work better
-    - [ ] lua-utils
-      - [ ] use a table paired with UD on the lua side to store typed objects, so they can be converted back to go with type info
-  - [ ] introduce fragments 'library' into lua environment
+    - [x] lua-utils
+  - [x] introduce fragments 'library' into lua environment
     - [x] fragment type
-    - [ ] 'this' instance injection
+    - [x] 'this' instance injection - partial, not integrated
     - [x] figure out what function should be pure lua vs. go
   - [ ] error handling
   - [ ] potentially add some capability to "include" lua files, could lead to more clutter though

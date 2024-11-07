@@ -15,8 +15,20 @@ const (
 	EVALUATED
 )
 
+type FragmentType int
+
+const (
+	FRAGMENT FragmentType = iota
+	PAGE
+	TEMPLATE
+)
+
+// TODO: refactor with different fragment types, support templated pages, and template fragments.
+// idea dump: template fragments have access to shared metadata as well.
+
 type Fragment struct {
 	Name       string
+	Type       FragmentType
 	Code       string
 	Depth      int
 	Parent     *Fragment
@@ -29,6 +41,7 @@ type Fragment struct {
 func (f *Fragment) MakeChild(name string, code string) *Fragment {
 	return &Fragment{
 		Name:       name,
+		Type:       FRAGMENT,
 		Code:       code,
 		Depth:      f.Depth + 1,
 		Parent:     f,
@@ -46,10 +59,20 @@ func (f *Fragment) RetrieveSharedMetadata() *CoreTable {
 	return f.Parent.RetrieveSharedMetadata()
 }
 
-func (f *Fragment) MakeLFragment(parent *LFragment) *LFragment {
+func (f *Fragment) MakeLFragment() *LFragment {
+
+	if f.Parent == nil {
+		return &LFragment{
+			Fragment:   f,
+			Parent:     nil,
+			LocalMeta:  &f.LocalMeta,
+			SharedMeta: f.RetrieveSharedMetadata(),
+		}
+	}
+
 	return &LFragment{
 		Fragment:   f,
-		Parent:     parent,
+		Parent:     f.Parent.MakeLFragment(),
 		LocalMeta:  &f.LocalMeta,
 		SharedMeta: f.RetrieveSharedMetadata(),
 	}
