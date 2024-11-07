@@ -81,7 +81,9 @@ var fragmentMethods = map[string]lua.LGFunction{
 	"getMeta":       fragmentGetMeta,
 	"getSharedMeta": fragmentGetSharedMeta,
 	"setMeta":       fragmentSetMeta,
+	"meta":          fragmentMergeMeta,
 	"setSharedMeta": fragmentSetSharedMeta,
+	"sharedMeta":    fragmentMergeSharedMeta,
 	"parent":        fragmentParent,
 }
 
@@ -162,11 +164,52 @@ func fragmentSetMeta(L *lua.LState) int {
 	return 0
 }
 
+func fragmentMergeMeta(L *lua.LState) int {
+	// Mergemeta is interesting, it takes in a table and merges it with the current metadata, overwriting existing keys, and creating non-existent ones
+	f := checkFragment(L)
+	if f.Fragment.EvalState != PENDING {
+		log.Warn("Merging metadata on a partially evaluated fragment will not trigger re-evaluation of previous computations.")
+	}
+
+	if L.GetTop() < 2 {
+		L.ArgError(2, "table expected")
+	}
+
+	if L.Get(2).Type() != lua.LTTable {
+		L.ArgError(2, "table expected")
+	}
+
+	table := L.CheckTable(2)
+	gt := NewCoreTableL(table)
+
+	f.LocalMeta.merge(gt)
+
+	return 0
+}
+
 func fragmentSetSharedMeta(L *lua.LState) int {
 	f := checkFragment(L)
 	key := L.CheckString(2)
 	value := luaToCoreType(L.Get(3))
 	setNestedValue(f.SharedMeta, key, value)
+	return 0
+}
+
+func fragmentMergeSharedMeta(L *lua.LState) int {
+	f := checkFragment(L)
+	if L.GetTop() < 2 {
+		L.ArgError(2, "table expected")
+	}
+
+	if L.Get(2).Type() != lua.LTTable {
+		L.ArgError(2, "table expected")
+	}
+
+	table := L.CheckTable(2)
+	gt := NewCoreTableL(table)
+
+	f.SharedMeta.merge(gt)
+
 	return 0
 }
 
@@ -236,7 +279,11 @@ func setNestedValue(table *CoreTable, key string, value CoreType) {
 
 const fc = `
 -- PLACEHOLDER LUA
-=====
+this:meta {
+	key = "NEW VALUE"
+}
+
+---
 Fragment content.
 
 ${key}
@@ -261,8 +308,7 @@ func testLua() {
 
 	pf.LocalMeta.v["key"] = NewCoreString("This is a key")
 
-	pf.RunLua(`print(this:getMeta("key"))`)
-
+	print(pf.Evaluate())
 }
 
 func (f *Fragment) RunLua(l string) {

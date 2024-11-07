@@ -78,6 +78,26 @@ func (c *CoreTable) prettyPrint() {
 	}
 }
 
+func (c *CoreTable) merge(other *CoreTable) {
+	for k, v := range other.v {
+		if existingVal, exists := c.v[k]; exists {
+			existingTable, isExistingTable := existingVal.(*CoreTable)
+			otherTable, isOtherTable := v.(*CoreTable)
+
+			if isExistingTable && isOtherTable {
+				// Both are CoreTable, perform recursive merge
+				existingTable.merge(otherTable)
+			} else {
+				// Either not CoreTable or types differ, overwrite with other.v[k]
+				c.v[k] = v
+			}
+		} else {
+			// Key does not exist in c.v, add it
+			c.v[k] = v
+		}
+	}
+}
+
 type CoreFunction struct{ v *lua.LFunction }
 
 func NewCoreFunction(f *lua.LFunction) *CoreFunction { return &CoreFunction{v: f} }

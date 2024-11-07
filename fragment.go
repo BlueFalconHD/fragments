@@ -78,21 +78,6 @@ func (f *Fragment) MakeLFragment() *LFragment {
 	}
 }
 
-// TODO: new fragment refactor add some evaluation functions and link to LFragment
-
-func replaceMetaReferences(code string, sm *CoreTable, m *CoreTable) string {
-	replace := func(meta map[string]interface{}) {
-		for k, v := range meta {
-			code = strings.ReplaceAll(code, "${"+k+"}", v.(string))
-		}
-	}
-
-	replace(sm.goType().(map[string]interface{}))
-	replace(m.goType().(map[string]interface{}))
-
-	return code
-}
-
 func (f *Fragment) NewChildFragmentFromName(name string) *Fragment {
 	// TODO: determine where a good root for the fragments are, currently just the same directory where run
 
@@ -142,32 +127,45 @@ Render Page:
 */
 
 func (f *Fragment) Evaluate() string {
+	parts := strings.Split(f.Code, "---")
+	var lua, code string
 
-	// Retrieve the first part of the file (before "====="), which is the lua
+	if len(parts) == 1 {
+		// No "---" found, treat the entire f.Code as "code" part
+		lua = ""
+		code = parts[0]
+	} else {
+		// Split into lua and code parts as expected
+		lua = parts[0]
+		code = parts[1]
+	}
 
-	// lua := f.Code[:strings.Index(f.Code, "=====")]
-	// TODO: Evaluate lua
+	// Evaluate lua if it's present
+	if lua != "" {
+		f.RunLua(lua)
+	}
 
-	// Retrieve the second part of the file (after "====="), which is the actual code
-	code := f.Code[strings.Index(f.Code, "=====")+5:]
+	// Replace references in fragment code to meta with actual values
+	metaReferences := regexp.MustCompile(`\$\{([^}]+)\}`).FindAllStringSubmatch(code, -1)
+	builderReferences := regexp.MustCompile(`\*\{([^}]+)\}`).FindAllStringSubmatch(code, -1)
+	fragReferences := regexp.MustCompile(`@\{([^}]+)\}`).FindAllStringSubmatch(code, -1)
 
-	// Replace references to meta with actual values
-	code = replaceMetaReferences(code, f.SharedMeta, &f.LocalMeta)
+	for _, ref := range metaReferences {
+		key := ref[1]
+		value := f.LocalMeta.v[key]
+		code = strings.ReplaceAll(code, "${"+key+"}", value.goType().(string))
+	}
 
-	// Run the builder functions to replace builder references with return values
-	// Builder functions are formatted as *{builderName}
-	// TODO: Run builder functions
+	for _, ref := range builderReferences {
+		builderName := ref[1]
+		code = strings.ReplaceAll(code, "*{"+builderName+"}", "<BUILDER TODO>")
+	}
 
-	// Run fragment process on each fragment reference and replace with the result
-	// Fragment references are formatted as @{fragmentName}
-
-	references := regexp.MustCompile(`@\{([^}]+)\}`).FindAllStringSubmatch(code, -1)
-	for _, ref := range references {
+	for _, ref := range fragReferences {
 		fragmentName := ref[1]
 		childFragment := f.NewChildFragmentFromName(fragmentName)
 		code = strings.ReplaceAll(code, "@{"+fragmentName+"}", childFragment.Evaluate())
 	}
 
-	// Return the evaluated code
 	return code
 }

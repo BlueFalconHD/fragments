@@ -1,5 +1,4 @@
--- no
-
+print("header lua")
 ---
-
-hi
+START OF HEADER
+END OF HEADER
