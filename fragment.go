@@ -2,91 +2,202 @@ package main
 
 import (
 	"fmt"
+	"github.com/charmbracelet/log"
+	lua "github.com/yuin/gopher-lua"
+	"os"
 	"regexp"
 	"strings"
 )
 
-func (s *Site) createFragment(name string, code string) *Fragment {
-	f := &Fragment{name: name, code: code, site: s}
-	s.fragments[name], _ = f.evaluate()
-	return f
-}
+type FragmentEvaluationState int
 
-type fragmentOptions struct {
-	renderAsPage bool
-	pagePath     string
-	scripts      []string
-}
+const (
+	PENDING FragmentEvaluationState = iota
+	EVALUATING
+	EVALUATED
+)
+
+type FragmentType int
+
+const (
+	FRAGMENT FragmentType = iota
+	PAGE
+	TEMPLATE
+)
+
+// TODO: refactor with different fragment types, support templated pages, and template fragments.
+// idea dump: template fragments have access to shared metadata as well.
+
 type Fragment struct {
-	name string
-	code string
-	meta metaMap
-	site *Site
-
-	options fragmentOptions
+	Name       string
+	Type       FragmentType
+	Code       string
+	Depth      int
+	Parent     *Fragment
+	LocalMeta  CoreTable
+	SharedMeta *CoreTable
+	EvalState  FragmentEvaluationState
+	Builders   *CoreTable
 }
 
-func (f *Fragment) evaluate() (*Fragment, string) {
-	localmeta := metaMap{}
+func (f *Fragment) MakeChild(name string, code string) *Fragment {
+	return &Fragment{
+		Name:       name,
+		Type:       FRAGMENT,
+		Code:       code,
+		Depth:      f.Depth + 1,
+		Parent:     f,
+		LocalMeta:  *NewEmptyCoreTable(),
+		SharedMeta: f.SharedMeta,
+	}
+}
 
-	if strings.Contains(f.code, "---") {
-		parts := strings.SplitN(f.code, "---", 3)
-		metaBlock := parts[1]
-		f.code = parts[2]
-		// trim leading and trailing whitespace from f.code
-		f.code = strings.TrimSpace(f.code)
-		metaLines := strings.Split(metaBlock, "\n")
-		for _, line := range metaLines {
-			if strings.Contains(line, ":") {
-				parts := strings.SplitN(line, ":", 2)
-				key := strings.TrimSpace(parts[0])
-				value := strings.TrimSpace(parts[1])
-				localmeta[key] = value
-			}
+func (f *Fragment) RetrieveSharedMetadata() *CoreTable {
+	// Recursively call this function on the parent fragment until depth is 0
+	if f.Depth == 0 {
+		return f.SharedMeta
+	}
+
+	return f.Parent.RetrieveSharedMetadata()
+}
+
+func (f *Fragment) MakeLFragment() *LFragment {
+
+	if f.Parent == nil {
+		return &LFragment{
+			Fragment:   f,
+			Parent:     nil,
+			LocalMeta:  &f.LocalMeta,
+			SharedMeta: f.RetrieveSharedMetadata(),
 		}
 	}
 
-	metaRegex := regexp.MustCompile(`\$\{(.*?)}`)
-	fragRegex := regexp.MustCompile(`@\{(.*?)}`)
-
-	var replacements []string
-	for _, match := range metaRegex.FindAllStringSubmatch(f.code, -1) {
-		key := match[1]
-		if value, exists := localmeta[key]; exists {
-			replacements = append(replacements, match[0], value)
-		} else if value, exists := f.site.meta[key]; exists {
-			replacements = append(replacements, match[0], value)
-		} else {
-			logWarning(fmt.Sprintf("No meta found for key '%s'", key))
-		}
+	return &LFragment{
+		Fragment:   f,
+		Parent:     f.Parent.MakeLFragment(),
+		LocalMeta:  &f.LocalMeta,
+		SharedMeta: f.RetrieveSharedMetadata(),
 	}
-
-	for _, match := range fragRegex.FindAllStringSubmatch(f.code, -1) {
-		fragKey := match[1]
-		if fragment, ok := f.site.fragments[fragKey]; ok {
-			evaluatedFragment, _ := fragment.evaluate()
-			replacements = append(replacements, match[0], evaluatedFragment.code)
-		} else {
-			logError(fmt.Sprintf("Fragment '%s' not found", fragKey))
-		}
-	}
-
-	content := strings.NewReplacer(replacements...).Replace(f.code)
-
-	// Run scripts
-	for _, scriptName := range f.options.scripts {
-		f.runScript(scriptName)
-	}
-
-	return &Fragment{code: content, meta: localmeta, site: f.site, name: f.name}, content
 }
-func (f *Fragment) logMeta() {
-	logMap(f.meta, f.name)
+
+func (f *Fragment) NewChildFragmentFromName(name string) *Fragment {
+	// TODO: determine where a good root for the fragments are, currently just the same directory where run
+
+	rd := "exampleSite/fragment/"
+
+	// get run directory
+	dir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	// get fragment directory
+	dir = dir + "/" + rd
+
+	// look for the name provided + ".frag"
+	file, err := os.Open(dir + name + ".frag")
+	if err != nil {
+		panic(err)
+	}
+
+	// read the file
+	b := make([]byte, 1024)
+	n, err := file.Read(b)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+		panic(err)
+	}
+
+	// create a new fragment
+	return f.MakeChild(name, string(b[:n]))
 }
-func (f *Fragment) runScript(scriptName string) {
-	if script, exists := scripts[scriptName]; exists {
-		script.run(f)
+
+/*
+
+Rendering Process:
+
+fragment:
+ - Evaluate lua
+ - Replace references in fragment code to meta with actual values
+ - Run the builder functions to replace builder references with return values
+ - Run fragment process on each fragment reference and replace with the result
+
+Render Page:
+ - Run fragment process on page fragment
+ - Replace ${CONTENT} in the page template with the result of the page fragment process
+
+*/
+
+func (f *Fragment) Evaluate() string {
+	// Setup lua state
+	L := f.CreateState()
+	defer L.Close()
+
+	parts := strings.Split(f.Code, "---")
+	var luaCode, code string
+
+	if len(parts) == 1 {
+		// No "---" found, treat the entire f.Code as "code" part
+		luaCode = ""
+		code = parts[0]
 	} else {
-		logError(fmt.Sprintf("Script '%s' not found", scriptName))
+		// Split into lua and code parts as expected
+		luaCode = parts[0]
+		code = parts[1]
 	}
+
+	// Evaluate lua if it's present
+	if luaCode != "" {
+		err := L.DoString(luaCode)
+		if err != nil {
+			log.Error(err)
+		}
+	}
+
+	// Replace references in fragment code to meta with actual values
+	metaReferences := regexp.MustCompile(`\$\{([^}]+)\}`).FindAllStringSubmatch(code, -1)
+	builderReferences := regexp.MustCompile(`\*\{([^}]+)\}`).FindAllStringSubmatch(code, -1)
+	fragReferences := regexp.MustCompile(`@\{([^}]+)\}`).FindAllStringSubmatch(code, -1)
+
+	for _, ref := range metaReferences {
+		key := ref[1]
+		value := f.LocalMeta.v[key]
+		code = strings.ReplaceAll(code, "${"+key+"}", value.goType().(string))
+	}
+
+	for _, ref := range fragReferences {
+		fragmentName := ref[1]
+		childFragment := f.NewChildFragmentFromName(fragmentName)
+		code = strings.ReplaceAll(code, "@{"+fragmentName+"}", childFragment.Evaluate())
+	}
+
+	for _, ref := range builderReferences {
+		builderName := ref[1]
+
+		builder := f.Builders.v[builderName]
+		if builder == nil {
+			log.Error("Builder not found:", "name", builderName)
+			continue
+		}
+
+		err := L.CallByParam(lua.P{
+			Fn:      builder.luaType(L),
+			NRet:    1,
+			Protect: true,
+			Handler: nil,
+		})
+
+		if err != nil {
+			log.Error("Error calling builder function", "name", builderName, "error", err)
+			continue
+		}
+
+		ret := L.Get(-1) // returned value
+		L.Pop(1)         // remove received value
+
+		gret := luaToCoreType(ret)
+		code = strings.ReplaceAll(code, "*{"+builderName+"}", gret.stringRepresentation())
+	}
+
+	return code
 }

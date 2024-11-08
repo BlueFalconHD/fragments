@@ -6,6 +6,8 @@ import (
 	"log"
 )
 
+// TODO: REDO CONFIG SYSTEM
+
 type page struct {
 	File    string   `yaml:"file"`
 	Scripts []string `yaml:"scripts"`
