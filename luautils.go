@@ -9,6 +9,7 @@ import (
 type CoreType interface {
 	goType() interface{}
 	luaType(L *lua.LState) lua.LValue
+	stringRepresentation() string
 }
 
 type CoreNil struct{}
@@ -17,6 +18,7 @@ func NewCoreNil() *CoreNil                          { return &CoreNil{} }
 func NewCoreNilL(lv lua.LValue) *CoreNil            { return &CoreNil{} }
 func (c *CoreNil) goType() interface{}              { return nil }
 func (c *CoreNil) luaType(L *lua.LState) lua.LValue { return lua.LNil }
+func (c *CoreNil) stringRepresentation() string     { return "nil" }
 
 type CoreBool struct{ v bool }
 
@@ -26,6 +28,12 @@ func NewCoreBoolL(lv lua.LValue) *CoreBool {
 }
 func (c *CoreBool) goType() interface{}              { return c.v }
 func (c *CoreBool) luaType(L *lua.LState) lua.LValue { return lua.LBool(c.v) }
+func (c *CoreBool) stringRepresentation() string {
+	if c.v {
+		return "true"
+	}
+	return "false"
+}
 
 type CoreNumber struct{ v float64 }
 
@@ -35,6 +43,7 @@ func NewCoreNumberL(lv lua.LValue) *CoreNumber {
 }
 func (c *CoreNumber) goType() interface{}              { return c.v }
 func (c *CoreNumber) luaType(L *lua.LState) lua.LValue { return lua.LNumber(c.v) }
+func (c *CoreNumber) stringRepresentation() string     { return fmt.Sprintf("%f", c.v) }
 
 type CoreString struct{ v string }
 
@@ -44,6 +53,7 @@ func NewCoreStringL(lv lua.LValue) *CoreString {
 }
 func (c *CoreString) goType() interface{}              { return c.v }
 func (c *CoreString) luaType(L *lua.LState) lua.LValue { return lua.LString(c.v) }
+func (c *CoreString) stringRepresentation() string     { return c.v }
 
 type CoreTable struct{ v map[string]CoreType }
 
@@ -77,7 +87,6 @@ func (c *CoreTable) prettyPrint() {
 		return
 	}
 }
-
 func (c *CoreTable) merge(other *CoreTable) {
 	for k, v := range other.v {
 		if existingVal, exists := c.v[k]; exists {
@@ -97,6 +106,12 @@ func (c *CoreTable) merge(other *CoreTable) {
 		}
 	}
 }
+func (c *CoreTable) stringRepresentation() string {
+	// format:
+	// <Table with 1 item(s)>
+
+	return fmt.Sprintf("<Table with %d item(s)>", len(c.v))
+}
 
 type CoreFunction struct{ v *lua.LFunction }
 
@@ -106,6 +121,7 @@ func NewCoreFunctionL(lv lua.LValue) *CoreFunction {
 }
 func (c *CoreFunction) goType() interface{}              { return c.v }
 func (c *CoreFunction) luaType(L *lua.LState) lua.LValue { return c.v }
+func (c *CoreFunction) stringRepresentation() string     { return "<Lua Function>" }
 
 type CoreUserData struct{ v *lua.LUserData }
 
@@ -114,6 +130,7 @@ func (c *CoreUserData) goType() interface{}          { return c.v }
 func (c *CoreUserData) luaType(L *lua.LState) lua.LValue {
 	return c.v
 }
+func (c *CoreUserData) stringRepresentation() string { return "<Lua UserData>" }
 
 func luaToCoreType(lv lua.LValue) CoreType {
 	switch lv.Type() {
@@ -135,7 +152,6 @@ func luaToCoreType(lv lua.LValue) CoreType {
 		return NewCoreNil()
 	}
 }
-
 func goToCoreType(v interface{}) CoreType {
 	switch val := v.(type) {
 	case nil:

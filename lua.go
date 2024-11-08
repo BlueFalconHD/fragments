@@ -88,7 +88,7 @@ var fragmentMethods = map[string]lua.LGFunction{
 	"setSharedMeta": fragmentSetSharedMeta,
 	"sharedMeta":    fragmentMergeSharedMeta,
 	"parent":        fragmentParent,
-	"builders":      fragmentMergeBuilders,
+	"builders":      fragmentBuilders,
 }
 
 func fragmentIndex(L *lua.LState) int {
@@ -231,7 +231,7 @@ func fragmentParent(L *lua.LState) int {
 	return 1
 }
 
-func fragmentMergeBuilders(L *lua.LState) int {
+func fragmentBuilders(L *lua.LState) int {
 	//_ = checkFragment(L)
 	f := checkFragment(L)
 	if L.GetTop() < 2 {
@@ -252,9 +252,19 @@ func fragmentMergeBuilders(L *lua.LState) int {
 		}
 	}
 
-	// TODO-URGENT: Fix the nil pointer dereference here
 	// Merge the builders table
-	f.Builders.merge(gt)
+	// f.Fragment.Builders.merge(gt)
+	f.Fragment.Builders = gt
+
+	return 0
+}
+
+func customPrint(L *lua.LState) int {
+	top := L.GetTop()
+	for i := 1; i <= top; i++ {
+
+	}
+	fmt.Println()
 	return 0
 }
 
@@ -311,13 +321,15 @@ func setNestedValue(table *CoreTable, key string, value CoreType) {
 const fc = `
 -- PLACEHOLDER LUA
 this:meta {
-	key = "NEW VALUE"
+	key = "NEW VALUE",
+	coolnessFactor = 10
 }
 
 this:builders {
 	builder = function()
-		print("Builder function called")
-	end
+		-- Divide the coolness factor by 2 and return it
+		return this:getMeta("coolnessFactor") / 2
+	end,
 }
 
 ---
@@ -341,22 +353,21 @@ func testLua() {
 		Parent:     nil,
 		LocalMeta:  *NewEmptyCoreTable(),
 		SharedMeta: NewEmptyCoreTable(),
-		Builders:   *NewEmptyCoreTable(),
-		LState:     nil,
+		Builders:   NewEmptyCoreTable(),
 	}
 
 	pf.EvalState = EVALUATING
 
 	pf.LocalMeta.v["key"] = NewCoreString("This is a key")
 
-	print(pf.Evaluate())
+	log.Info(pf.Evaluate())
 }
 
-func (f *Fragment) CreateState() {
+func (f *Fragment) CreateState() *lua.LState {
 	lf := f.MakeLFragment()
 	L := lua.NewState()
 	registerFragmentType(L)
 	libs.Preload(L)
 	lf.registerThisFragmentAs(L, "this")
-	f.LState = L
+	return L
 }

@@ -1,0 +1,24 @@
+# TODO
+
+- [ ] Implement hierarchy tracking
+- [x] Embed Lua
+  - [x] First prototype with `github.com/rosbit/luago` (not effective)
+  - [x] Switch to `gopher-lua` and `lua-utils`
+  - [x] Integrate fragments library into Lua
+    - [x] Define fragment type
+    - [x] Inject 'this' instance (partially done)
+    - [x] Determine Lua vs. Go functions
+  - [x] Improve error handling
+  - [x] Consider Lua file inclusion (may add clutter)
+- [x] Redo fragment parsing
+  - [x] Remove old code
+  - [x] Make modular, readable, maintainable
+- [x] Create branding/logo
+- [x] Enhance error handling
+- [ ] Write documentation
+- [ ] Develop CLI
+  - [ ] Implement `init` command
+  - [ ] Implement `build` command
+    - [ ] Configuration system (YAML)
+- [ ] Write tests
+- [ ] Release

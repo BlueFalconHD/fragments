@@ -37,8 +37,7 @@ type Fragment struct {
 	LocalMeta  CoreTable
 	SharedMeta *CoreTable
 	EvalState  FragmentEvaluationState
-	Builders   CoreTable
-	LState     *lua.LState
+	Builders   *CoreTable
 }
 
 func (f *Fragment) MakeChild(name string, code string) *Fragment {
@@ -131,25 +130,25 @@ Render Page:
 
 func (f *Fragment) Evaluate() string {
 	// Setup lua state
-	f.CreateState()
-	defer f.LState.Close()
+	L := f.CreateState()
+	defer L.Close()
 
 	parts := strings.Split(f.Code, "---")
-	var lua, code string
+	var luaCode, code string
 
 	if len(parts) == 1 {
 		// No "---" found, treat the entire f.Code as "code" part
-		lua = ""
+		luaCode = ""
 		code = parts[0]
 	} else {
 		// Split into lua and code parts as expected
-		lua = parts[0]
+		luaCode = parts[0]
 		code = parts[1]
 	}
 
 	// Evaluate lua if it's present
-	if lua != "" {
-		err := f.LState.DoString(lua)
+	if luaCode != "" {
+		err := L.DoString(luaCode)
 		if err != nil {
 			log.Error(err)
 		}
@@ -166,18 +165,38 @@ func (f *Fragment) Evaluate() string {
 		code = strings.ReplaceAll(code, "${"+key+"}", value.goType().(string))
 	}
 
-	for _, ref := range builderReferences {
-		builderName := ref[1]
-
-		//
-
-		code = strings.ReplaceAll(code, "*{"+builderName+"}", "<BUILDER TODO>")
-	}
-
 	for _, ref := range fragReferences {
 		fragmentName := ref[1]
 		childFragment := f.NewChildFragmentFromName(fragmentName)
 		code = strings.ReplaceAll(code, "@{"+fragmentName+"}", childFragment.Evaluate())
+	}
+
+	for _, ref := range builderReferences {
+		builderName := ref[1]
+
+		builder := f.Builders.v[builderName]
+		if builder == nil {
+			log.Error("Builder not found:", "name", builderName)
+			continue
+		}
+
+		err := L.CallByParam(lua.P{
+			Fn:      builder.luaType(L),
+			NRet:    1,
+			Protect: true,
+			Handler: nil,
+		})
+
+		if err != nil {
+			log.Error("Error calling builder function", "name", builderName, "error", err)
+			continue
+		}
+
+		ret := L.Get(-1) // returned value
+		L.Pop(1)         // remove received value
+
+		gret := luaToCoreType(ret)
+		code = strings.ReplaceAll(code, "*{"+builderName+"}", gret.stringRepresentation())
 	}
 
 	return code
