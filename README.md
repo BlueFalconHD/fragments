@@ -1,42 +1,58 @@
-**project direction**
 
-I have picked this project up again and intend on polishing it into a usable product. As of right now I am working on an embedded lua scripting API for more dynamic generation of pages, rather than the statically compiled scripts I had used initially. This makes the project a lot more complex though, which is probably why it won't be in a usable state for a few more weeks. I intend to finish this project by the end of High Seas, an event by Hack Club. Switch to the [docs-todo-and-ideal-project](https://github.com/BlueFalconHD/fragments/tree/docs-todo-and-ideal-project) (horrible branch name idk what I was doing) branch and view `todo.md` to see how I want the project to be used. I would love this to be usable by everyone so any suggestions are welcome (submit an issue).
+# fragments
+## everything is a fragment
+
+work in progress
+
+### what is a fragment?
+
+A fragment is the basic building block of your site. When I say 'everything is a fragment', I mean that every piece of content on your site is a fragment. Fragments can be...
+
+- Pages
+- Components
+- Templates
+- ...
+
+What is so powerful about fragments compared to other SSGs is that each fragment has access to a lua environment, which can be used to generate meta, content, and more.
+
+### how do I use fragments?
+
+Fragments are defined in a `fragments` directory in your project (this is configurable). Each fragment is a file with a .frag extension.
+
+```lua
+-- fragments/hello.frag
+-- this is the lua body of our fragment
+
+-- we can do some cool stuff here
+
+function getStringFormattedDate()
+    return os.date("%Y-%m-%d")
+end
+
+this:meta {
+    buildDate = getStringFormattedDate(),
+    title = "Hello, World!"
+}
+
+this:builders {
+    randomBuilder = function()
+        -- Pick 40 random characters from the alphabet and append them to a string, then return it
+        local alphabet = "abcdefghijklmnopqrstuvwxyz"
+        local result = ""
+        for i = 1, 40 do
+            result = result .. alphabet:sub(math.random(1, #alphabet), math.random(1, #alphabet))
+        end
+        return result
+    end
+}
 
 ---
 
-everything is a fragment
+The content of our fragment begins here.
 
-work in progress, currently fragment parsing and evaluating works.
+By using a dollar sign and braces, you can include metadata set in the lua environment: ${buildDate}
 
-a fragment defines any meta at the top of the file:
+To include other fragments, you can use @{fragmentName}
 
-```
----
-key: value
----
-```
-
-then it defines whatever it wants after that:
-
-```
-anything ${i} @{want}
-```
-
-- `${}` insert meta value
-- `@{}` insert another fragment
-
-
-ex.
-
-
-```
----
-title: Home/Welcome
-siteName: Example Site
----
-Welcome to ${siteName}.
-Today's date is ${date}.
-Test undefined meta: ${undefined}
-
-@{footer}
+Finally, you can dynamically run a lua function that returns a string, like so: *{randomBuilder}
 ```

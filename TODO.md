@@ -13,6 +13,7 @@
 - [x] Redo fragment parsing
   - [x] Remove old code
   - [x] Make modular, readable, maintainable
+- [x] Add template fragments
 - [x] Create branding/logo
 - [x] Enhance error handling
 - [ ] Write documentation

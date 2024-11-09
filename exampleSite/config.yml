@@ -1,10 +1,12 @@
 # fragments configuration
 
-# directory where fragments are found
+# directory where types of fragments are stored
 fragments: "fragment"
+pages: "page"
 
 # default page template
-template: "fragment/page.frag"
+page_template: "fragment/page.frag"
 
-# directory where pages are stored
-pages: "page"
+# build directory
+build: "build"
+

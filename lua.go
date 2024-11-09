@@ -172,7 +172,7 @@ func fragmentMergeMeta(L *lua.LState) int {
 	// Mergemeta is interesting, it takes in a table and merges it with the current metadata, overwriting existing keys, and creating non-existent ones
 	f := checkFragment(L)
 	if f.Fragment.EvalState != PENDING {
-		log.Warn("Merging metadata on a partially evaluated fragment will not trigger re-evaluation of previous computations.")
+		log.Warn("Merging metadata on a partially evaluated fragment will not trigger re-evaluation of previous computations.", "fragment", f.Fragment.Name)
 	}
 
 	if L.GetTop() < 2 {
@@ -318,30 +318,46 @@ func setNestedValue(table *CoreTable, key string, value CoreType) {
 	}
 }
 
+// TODO: remove testing stuff
+
 const fc = `
--- PLACEHOLDER LUA
+-- fragments/hello.frag
+-- this is the lua body of our fragment
+
+-- we can do some cool stuff here
+
+function getStringFormattedDate()
+    return os.date("%Y-%m-%d")
+end
+
 this:meta {
-	key = "NEW VALUE",
-	coolnessFactor = 10
+    buildDate = getStringFormattedDate(),
+    title = "Hello, World!"
 }
 
 this:builders {
-	builder = function()
-		-- Divide the coolness factor by 2 and return it
-		return this:getMeta("coolnessFactor") / 2
-	end,
+    randomBuilder = function()
+        -- Pick 40 random characters from the alphabet and append them to a string, then return it
+        local alphabet = "abcdefghijklmnopqrstuvwxyz"
+        local result = ""
+        for i = 1, 10 do
+            result = result .. alphabet:sub(math.random(1, #alphabet), math.random(1, #alphabet))
+        end
+        return result
+    end
 }
-
 ---
-Fragment content.
+The content of our fragment begins here.
 
-${key}
+By using a dollar sign and braces, you can include metadata set in the lua environment: ${buildDate}
 
-@{header}
+To include other fragments, you can use \@{fragmentName}
 
-@{sub/test}
+Finally, you can dynamically run a lua function that returns a string, like so: *{randomBuilder}
 
-*{builder}
+@{ihavecontent[[
+	@{footer}
+]]}
 `
 
 func testLua() {
@@ -356,11 +372,9 @@ func testLua() {
 		Builders:   NewEmptyCoreTable(),
 	}
 
-	pf.EvalState = EVALUATING
-
 	pf.LocalMeta.v["key"] = NewCoreString("This is a key")
 
-	log.Info(pf.Evaluate())
+	log.Info("Output of evaluation", "result", pf.Evaluate())
 }
 
 func (f *Fragment) CreateState() *lua.LState {

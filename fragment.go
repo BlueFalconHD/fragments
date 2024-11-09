@@ -129,6 +129,8 @@ Render Page:
 */
 
 func (f *Fragment) Evaluate() string {
+	f.EvalState = PENDING
+
 	// Setup lua state
 	L := f.CreateState()
 	defer L.Close()
@@ -146,6 +148,11 @@ func (f *Fragment) Evaluate() string {
 		code = parts[1]
 	}
 
+	f.EvalState = EVALUATING
+
+	// strip leading and trailing whitespace from code
+	code = strings.TrimSpace(code)
+
 	// Evaluate lua if it's present
 	if luaCode != "" {
 		err := L.DoString(luaCode)
@@ -154,50 +161,103 @@ func (f *Fragment) Evaluate() string {
 		}
 	}
 
+	// Replace \@{ with __ESCAPED@__{
+	// Replace \*{ with __ESCAPED*__{
+	// Replace \${ with __ESCAPED$__{
+	code = strings.ReplaceAll(code, "\\@{", "__ESCAPED@__{")
+	code = strings.ReplaceAll(code, "\\*{", "__ESCAPED*__{")
+	code = strings.ReplaceAll(code, "\\${", "__ESCAPED$__{")
+
 	// Replace references in fragment code to meta with actual values
-	metaReferences := regexp.MustCompile(`\$\{([^}]+)\}`).FindAllStringSubmatch(code, -1)
-	builderReferences := regexp.MustCompile(`\*\{([^}]+)\}`).FindAllStringSubmatch(code, -1)
-	fragReferences := regexp.MustCompile(`@\{([^}]+)\}`).FindAllStringSubmatch(code, -1)
+	metaReferences := regexp.MustCompile(`\$\{([^}]+)\}`)
 
-	for _, ref := range metaReferences {
-		key := ref[1]
-		value := f.LocalMeta.v[key]
-		code = strings.ReplaceAll(code, "${"+key+"}", value.goType().(string))
-	}
-
-	for _, ref := range fragReferences {
-		fragmentName := ref[1]
-		childFragment := f.NewChildFragmentFromName(fragmentName)
-		code = strings.ReplaceAll(code, "@{"+fragmentName+"}", childFragment.Evaluate())
-	}
-
-	for _, ref := range builderReferences {
-		builderName := ref[1]
-
-		builder := f.Builders.v[builderName]
-		if builder == nil {
-			log.Error("Builder not found:", "name", builderName)
-			continue
+	ri := metaReferences.FindAllStringIndex(code, -1)
+	rv := metaReferences.FindAllStringSubmatch(code, -1)
+	if ri != nil {
+		for i, ref := range ri {
+			key := rv[i][1]
+			value := f.LocalMeta.v[key]
+			code = code[:ref[0]] + value.stringRepresentation() + code[ref[1]:]
 		}
-
-		err := L.CallByParam(lua.P{
-			Fn:      builder.luaType(L),
-			NRet:    1,
-			Protect: true,
-			Handler: nil,
-		})
-
-		if err != nil {
-			log.Error("Error calling builder function", "name", builderName, "error", err)
-			continue
-		}
-
-		ret := L.Get(-1) // returned value
-		L.Pop(1)         // remove received value
-
-		gret := luaToCoreType(ret)
-		code = strings.ReplaceAll(code, "*{"+builderName+"}", gret.stringRepresentation())
 	}
+
+	builderReferences := regexp.MustCompile(`\*\{([^}]+)\}`)
+
+	ri = builderReferences.FindAllStringIndex(code, -1)
+	rv = builderReferences.FindAllStringSubmatch(code, -1)
+	if ri != nil {
+		for i, ref := range ri {
+			builderName := rv[i][1]
+
+			builder := f.Builders.v[builderName]
+			if builder == nil {
+				log.Error("Builder not found:", "name", builderName)
+				continue
+			}
+
+			err := L.CallByParam(lua.P{
+				Fn:      builder.luaType(L),
+				NRet:    1,
+				Protect: true,
+				Handler: nil,
+			})
+
+			if err != nil {
+				log.Error("Error calling builder function", "name", builderName, "error", err)
+				continue
+			}
+
+			ret := L.Get(-1) // returned value
+			L.Pop(1)         // remove received value
+
+			gret := luaToCoreType(ret)
+			code = code[:ref[0]] + gret.stringRepresentation() + code[ref[1]:]
+		}
+	}
+
+	fragReferencesWithContent := regexp.MustCompile(`@\{(.*?)\[\[([\s\S]*?)\]\]\}`)
+	ri = fragReferencesWithContent.FindAllStringIndex(code, -1)
+	rv = fragReferencesWithContent.FindAllStringSubmatch(code, -1)
+	if ri != nil {
+		for i, ref := range ri {
+			fragmentName := rv[i][1]
+			content := rv[i][2]
+
+			childFragment := f.NewChildFragmentFromName(fragmentName)
+			code = code[:ref[0]] + childFragment.WithContent(content, f) + code[ref[1]:]
+		}
+	}
+
+	fragReferences := regexp.MustCompile(`@\{([^}]+)\}`)
+	ri = fragReferences.FindAllStringIndex(code, -1)
+	rv = fragReferences.FindAllStringSubmatch(code, -1)
+	if ri != nil {
+		for i, ref := range ri {
+			fragmentName := rv[i][1]
+
+			childFragment := f.NewChildFragmentFromName(fragmentName)
+			code = code[:ref[0]] + childFragment.Evaluate() + code[ref[1]:]
+		}
+	}
+
+	// Restore escaped characters
+	code = strings.ReplaceAll(code, "__ESCAPED@__{", "@{")
+	code = strings.ReplaceAll(code, "__ESCAPED*__{", "*{")
+	code = strings.ReplaceAll(code, "__ESCAPED$__{", "${")
+
+	f.EvalState = EVALUATED
 
 	return code
+}
+
+func (f *Fragment) WithContent(content string, of *Fragment) string {
+
+	// Merge this fragment's shared metadata with the provided fragment's shared metadata
+	f.SharedMeta.merge(of.SharedMeta)
+
+	// Replace ${CONTENT} in the fragment code with the content provided
+	f.LocalMeta.v["CONTENT"] = NewCoreString(content)
+
+	c := f.Evaluate()
+	return c
 }
