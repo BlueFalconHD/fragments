@@ -64,7 +64,14 @@ type MetaReferenceNode struct {
 }
 
 func (n *MetaReferenceNode) Evaluate(f *Fragment, L *lua.LState) (string, error) {
-	value := f.LocalMeta.v[n.Key]
+
+	// Get the value from the fragment's shared metadata first
+	value := f.SharedMeta.v[n.Key]
+	if value == nil {
+		// If the key is not found in the shared metadata, get it from the local metadata
+		value = f.LocalMeta.v[n.Key]
+	}
+
 	if value == nil {
 		return "", &EvaluationError{
 			Line:    n.Line(),

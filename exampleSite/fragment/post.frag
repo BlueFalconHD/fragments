@@ -1,8 +1,17 @@
 this:template("page")
 
+-- We have the following meta available to us for a standard post
+-- postTitle
+-- postDate
+-- postDescription
+-- author
+
 ---
 
-My awesome blog post
+<h1>${postTitle}</h1>
+<p>${postDescription}</p>
+<p>${postDate} - ${author}</p>
+
 =================================
 
 @{markdown[[${CONTENT}]]}

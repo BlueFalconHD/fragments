@@ -135,7 +135,10 @@ func (l *Lexer) NextToken() Token {
 }
 
 func (l *Lexer) skipWhitespace() {
-	for l.ch == ' ' || l.ch == '\t' {
+	//for l.ch == ' ' || l.ch == '\t' {
+	//	l.readChar()
+	//}
+	for l.ch == '\t' {
 		l.readChar()
 	}
 }

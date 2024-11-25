@@ -336,7 +336,7 @@ func setNestedValue(table *CoreTable, key string, value CoreType) {
 	}
 }
 
-// Utility function availible to lua code that renders markdown to html
+// Utility function available to lua code that renders markdown to html
 func renderMarkdown(L *lua.LState) int {
 	if L.GetTop() < 1 {
 		L.ArgError(1, "string expected")
@@ -375,6 +375,13 @@ this:meta {
     buildDate = getStringFormattedDate(),
     title = "Hello, World!"
 }
+
+this:sharedMeta {
+	author = "John Doe",
+	postTitle = "Hello, World!",
+	postDescription = "This is a test post.",
+	postDate = getStringFormattedDate()
+}	
 
 this:builders {
     randomBuilder = function()
@@ -423,17 +430,8 @@ Test reverse builder: *{reverseBuilder[[Hello world!]]}
 
 Test markdown renderer:
 
-*{simpleMarkdownRenderer[[ j
-
-# This is a header
-
-This is a paragraph of text.
-
-# This is another header
-
-This is another paragraph of text.
-
-]]}
+# Header 1
+This is a paragraph.
 
 Test fragment with content:
 
