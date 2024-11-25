@@ -36,6 +36,7 @@ type Fragment struct {
 	SharedMeta *CoreTable
 	EvalState  FragmentEvaluationState
 	Builders   *CoreTable
+	Template   *Fragment
 }
 
 func (f *Fragment) MakeChild(name string, code string) *Fragment {
@@ -75,6 +76,49 @@ func (f *Fragment) MakeLFragment() *LFragment {
 		Parent:     f.Parent.MakeLFragment(),
 		LocalMeta:  &f.LocalMeta,
 		SharedMeta: f.RetrieveSharedMetadata(),
+	}
+}
+
+func GetFragmentFromName(name string, fragType FragmentType) *Fragment {
+	// TODO: determine where a good root for the fragments are, currently just the same directory where run
+
+	rd := "exampleSite/fragment/"
+
+	// get run directory
+	dir, err := os.Getwd()
+
+	if err != nil {
+		panic(err)
+	}
+
+	// get fragment directory
+	dir = dir + "/" + rd
+
+	// look for the name provided + ".frag"
+	file, err := os.Open(dir + name + ".frag")
+
+	if err != nil {
+		panic(err)
+	}
+
+	// read the file
+	b := make([]byte, 1024)
+	n, err := file.Read(b)
+
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+		panic(err)
+	}
+
+	// create a new fragment
+	return &Fragment{
+		Name:       name,
+		Type:       fragType,
+		Code:       string(b[:n]),
+		Depth:      0,
+		Parent:     nil,
+		LocalMeta:  *NewEmptyCoreTable(),
+		SharedMeta: NewEmptyCoreTable(),
 	}
 }
 
@@ -162,7 +206,7 @@ func (f *Fragment) Evaluate() string {
 	// Parse code into AST
 	nodes, err := ParseCode(code)
 	if err != nil {
-		log.Error("Error parsing code:", err)
+		log.Error(err)
 		return ""
 	}
 
@@ -171,13 +215,28 @@ func (f *Fragment) Evaluate() string {
 	for _, node := range nodes {
 		s, err := node.Evaluate(f, L)
 		if err != nil {
-			log.Error("Error evaluating node:", err)
+			log.Error(err)
 			continue
 		}
 		result.WriteString(s)
 	}
 
 	f.EvalState = EVALUATED
+
+	if f.Template != nil {
+		if f.Depth == 0 {
+
+			// Set the template's shared metadata to the fragment's shared metadata
+			f.Template.SharedMeta = f.SharedMeta
+
+			// Set ${CONTENT} in the template to the result of this fragment
+			f.Template.LocalMeta.v["CONTENT"] = NewCoreString(result.String())
+			// Evaluate the template
+			return f.Template.Evaluate()
+		} else {
+			log.Error("Template fragments are only allowed at the root of the fragment tree.")
+		}
+	}
 
 	return result.String()
 }

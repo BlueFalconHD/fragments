@@ -1,4 +1,8 @@
-THIS IS THE PAGE TEMPLATE WOO HOO
+this:template("page")
+
+---
+
+THIS IS THE Post TEMPLATE WOO HOO
 =================================
 ${CONTENT}
 =================================

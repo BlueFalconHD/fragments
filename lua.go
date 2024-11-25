@@ -89,6 +89,7 @@ var fragmentMethods = map[string]lua.LGFunction{
 	"sharedMeta":    fragmentMergeSharedMeta,
 	"parent":        fragmentParent,
 	"builders":      fragmentBuilders,
+	"template":      fragmentSetTemplate,
 }
 
 func fragmentIndex(L *lua.LState) int {
@@ -259,6 +260,23 @@ func fragmentBuilders(L *lua.LState) int {
 	return 0
 }
 
+func fragmentSetTemplate(L *lua.LState) int {
+	f := checkFragment(L)
+	if L.GetTop() < 2 {
+		L.ArgError(2, "string expected")
+	}
+
+	if L.Get(2).Type() != lua.LTString {
+		L.ArgError(2, "string expected")
+	}
+
+	// Set real fragment's template member to a pointer to the template fragment referenced by name
+	t := GetFragmentFromName(L.CheckString(2), TEMPLATE)
+	f.Fragment.Template = t
+
+	return 0
+}
+
 func customPrint(L *lua.LState) int {
 	top := L.GetTop()
 	for i := 1; i <= top; i++ {
@@ -326,6 +344,8 @@ const fc = `
 
 -- we can do some cool stuff here
 
+this:template("markdown")
+
 function getStringFormattedDate()
     return os.date("%Y-%m-%d")
 end
@@ -348,6 +368,27 @@ this:builders {
 	-- Builders can also take content as a single string argument
 	reverseBuilder = function(content)
 		return string.reverse(content)
+	end,
+	simpleMarkdownRenderer = function(content)
+		-- This is a very simple markdown renderer
+		-- It only supports headers and paragraphs
+		-- Headers are defined by a line starting with one or more '#' characters
+		-- Paragraphs are defined by a line of text
+		-- It will return a string with the markdown rendered as HTML
+		local result = ""
+		local inHeader = false
+		for line in content:gmatch("[^\n]+") do
+			if line:find("^#+") then
+				-- Header
+				local headerLevel = line:find("^#+")
+				local headerText = line:sub(headerLevel + 1)
+				result = result .. "<h" .. headerLevel .. ">" .. headerText .. "</h" .. headerLevel .. ">\n"
+			else
+				-- Paragraph
+				result = result .. "<p>" .. line .. "</p>\n"
+			end
+		end
+		return result
 	end
 }
 ---
@@ -358,6 +399,25 @@ By using a dollar sign and braces, you can include metadata set in the lua envir
 Finally, you can dynamically run a lua function that returns a string, like so: *{randomBuilder}
 
 Test reverse builder: *{reverseBuilder[[Hello world!]]}
+
+Test markdown renderer:
+
+*{simpleMarkdownRenderer[[ j
+
+# This is a header
+
+This is a paragraph of text.
+
+# This is another header
+
+This is another paragraph of text.
+
+]]}
+
+Test fragment with content:
+
+@{ihavecontent[[This is the content of the fragment]]}
+
 `
 
 func testLua() {

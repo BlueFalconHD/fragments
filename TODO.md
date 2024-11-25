@@ -13,6 +13,8 @@
 - [x] Redo fragment parsing
   - [x] Remove old code
   - [x] Make modular, readable, maintainable
+- [x] Redo Fragment parsing 2: electric boogaloo
+  - [x] Out with the regex in with the lexer
 - [x] Add template fragments
 - [x] Create branding/logo
 - [x] Enhance error handling

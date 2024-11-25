@@ -1,7 +1,18 @@
-this:configure {
-    template = true,
+this:template("post")
+
+this:builders {
+    renderMarkdown = function(content)
+        -- Replace this with your own markdown rendering code
+        -- For example, we will reverse the content
+        return string.reverse(content)
+    end
 }
 
 ---
 
-# Markdown Fragment
+THIS IS THE MARKDOWN TEMPLATE WOO HOO
+=====================================
+
+*{renderMarkdown[[${CONTENT}]]}
+
+=====================================
