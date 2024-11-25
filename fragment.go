@@ -3,9 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/charmbracelet/log"
-	lua "github.com/yuin/gopher-lua"
 	"os"
-	"regexp"
 	"strings"
 )
 
@@ -150,7 +148,7 @@ func (f *Fragment) Evaluate() string {
 
 	f.EvalState = EVALUATING
 
-	// strip leading and trailing whitespace from code
+	// Strip leading and trailing whitespace from code
 	code = strings.TrimSpace(code)
 
 	// Evaluate lua if it's present
@@ -161,93 +159,27 @@ func (f *Fragment) Evaluate() string {
 		}
 	}
 
-	// Replace \@{ with __ESCAPED@__{
-	// Replace \*{ with __ESCAPED*__{
-	// Replace \${ with __ESCAPED$__{
-	code = strings.ReplaceAll(code, "\\@{", "__ESCAPED@__{")
-	code = strings.ReplaceAll(code, "\\*{", "__ESCAPED*__{")
-	code = strings.ReplaceAll(code, "\\${", "__ESCAPED$__{")
-
-	// Replace references in fragment code to meta with actual values
-	metaReferences := regexp.MustCompile(`\$\{([^}]+)\}`)
-
-	ri := metaReferences.FindAllStringIndex(code, -1)
-	rv := metaReferences.FindAllStringSubmatch(code, -1)
-	if ri != nil {
-		for i, ref := range ri {
-			key := rv[i][1]
-			value := f.LocalMeta.v[key]
-			code = code[:ref[0]] + value.stringRepresentation() + code[ref[1]:]
-		}
+	// Parse code into AST
+	nodes, err := ParseCode(code)
+	if err != nil {
+		log.Error("Error parsing code:", err)
+		return ""
 	}
 
-	builderReferences := regexp.MustCompile(`\*\{([^}]+)\}`)
-
-	ri = builderReferences.FindAllStringIndex(code, -1)
-	rv = builderReferences.FindAllStringSubmatch(code, -1)
-	if ri != nil {
-		for i, ref := range ri {
-			builderName := rv[i][1]
-
-			builder := f.Builders.v[builderName]
-			if builder == nil {
-				log.Error("Builder not found:", "name", builderName)
-				continue
-			}
-
-			err := L.CallByParam(lua.P{
-				Fn:      builder.luaType(L),
-				NRet:    1,
-				Protect: true,
-				Handler: nil,
-			})
-
-			if err != nil {
-				log.Error("Error calling builder function", "name", builderName, "error", err)
-				continue
-			}
-
-			ret := L.Get(-1) // returned value
-			L.Pop(1)         // remove received value
-
-			gret := luaToCoreType(ret)
-			code = code[:ref[0]] + gret.stringRepresentation() + code[ref[1]:]
+	// Evaluate nodes
+	var result strings.Builder
+	for _, node := range nodes {
+		s, err := node.Evaluate(f, L)
+		if err != nil {
+			log.Error("Error evaluating node:", err)
+			continue
 		}
+		result.WriteString(s)
 	}
-
-	fragReferencesWithContent := regexp.MustCompile(`@\{(.*?)\[\[([\s\S]*?)\]\]\}`)
-	ri = fragReferencesWithContent.FindAllStringIndex(code, -1)
-	rv = fragReferencesWithContent.FindAllStringSubmatch(code, -1)
-	if ri != nil {
-		for i, ref := range ri {
-			fragmentName := rv[i][1]
-			content := rv[i][2]
-
-			childFragment := f.NewChildFragmentFromName(fragmentName)
-			code = code[:ref[0]] + childFragment.WithContent(content, f) + code[ref[1]:]
-		}
-	}
-
-	fragReferences := regexp.MustCompile(`@\{([^}]+)\}`)
-	ri = fragReferences.FindAllStringIndex(code, -1)
-	rv = fragReferences.FindAllStringSubmatch(code, -1)
-	if ri != nil {
-		for i, ref := range ri {
-			fragmentName := rv[i][1]
-
-			childFragment := f.NewChildFragmentFromName(fragmentName)
-			code = code[:ref[0]] + childFragment.Evaluate() + code[ref[1]:]
-		}
-	}
-
-	// Restore escaped characters
-	code = strings.ReplaceAll(code, "__ESCAPED@__{", "@{")
-	code = strings.ReplaceAll(code, "__ESCAPED*__{", "*{")
-	code = strings.ReplaceAll(code, "__ESCAPED$__{", "${")
 
 	f.EvalState = EVALUATED
 
-	return code
+	return result.String()
 }
 
 func (f *Fragment) WithContent(content string, of *Fragment) string {

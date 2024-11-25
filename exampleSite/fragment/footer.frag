@@ -1,2 +1,3 @@
-FOOTER
-/FOOTER
+
+<FOOTER>
+</FOOTER>

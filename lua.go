@@ -344,20 +344,20 @@ this:builders {
             result = result .. alphabet:sub(math.random(1, #alphabet), math.random(1, #alphabet))
         end
         return result
-    end
+    end,
+	-- Builders can also take content as a single string argument
+	reverseBuilder = function(content)
+		return string.reverse(content)
+	end
 }
 ---
 The content of our fragment begins here.
 
 By using a dollar sign and braces, you can include metadata set in the lua environment: ${buildDate}
 
-To include other fragments, you can use \@{fragmentName}
-
 Finally, you can dynamically run a lua function that returns a string, like so: *{randomBuilder}
 
-@{ihavecontent[[
-	@{footer}
-]]}
+Test reverse builder: *{reverseBuilder[[Hello world!]]}
 `
 
 func testLua() {
