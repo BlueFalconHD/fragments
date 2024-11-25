@@ -336,6 +336,27 @@ func setNestedValue(table *CoreTable, key string, value CoreType) {
 	}
 }
 
+// Utility function availible to lua code that renders markdown to html
+func renderMarkdown(L *lua.LState) int {
+	if L.GetTop() < 1 {
+		L.ArgError(1, "string expected")
+	}
+
+	if L.Get(1).Type() != lua.LTString {
+		L.ArgError(1, "string expected")
+	}
+
+	content := L.CheckString(1)
+	html, err := RenderMarkdownToHTML(content)
+	if err != nil {
+		L.Push(lua.LNil)
+		L.Push(lua.LString(err.Error()))
+		return 2
+	}
+	L.Push(NewCoreString(html).luaType(L))
+	return 1
+}
+
 // TODO: remove testing stuff
 
 const fc = `
@@ -344,7 +365,7 @@ const fc = `
 
 -- we can do some cool stuff here
 
-this:template("markdown")
+this:template("post")
 
 function getStringFormattedDate()
     return os.date("%Y-%m-%d")
@@ -441,6 +462,10 @@ func (f *Fragment) CreateState() *lua.LState {
 	lf := f.MakeLFragment()
 	L := lua.NewState()
 	registerFragmentType(L)
+
+	// Register the markdown rendering function
+	L.SetGlobal("renderMarkdown", L.NewFunction(renderMarkdown))
+
 	libs.Preload(L)
 	lf.registerThisFragmentAs(L, "this")
 	return L

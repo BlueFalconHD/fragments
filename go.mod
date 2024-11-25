@@ -6,8 +6,8 @@ require (
 	github.com/charmbracelet/log v0.4.0
 	github.com/k0kubun/pp/v3 v3.3.0
 	github.com/vadv/gopher-lua-libs v0.5.0
+	github.com/yuin/goldmark v1.7.8
 	github.com/yuin/gopher-lua v1.1.1
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
