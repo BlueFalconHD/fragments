@@ -9,11 +9,11 @@ end
 this:setMeta("date", getFormattedDate())
 ===
 
-${header}
+@{header}
 
 <h1 class="title">Welcome to my site!</h1>
 <h2 class="description">This is my home page.</h2>
 
-${blogposts}
+@{blogposts}
 
-${footer}
+@{footer}

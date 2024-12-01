@@ -27,27 +27,29 @@ const (
 // idea dump: template fragments have access to shared metadata as well.
 
 type Fragment struct {
-	Name       string
-	Type       FragmentType
-	Code       string
-	Depth      int
-	Parent     *Fragment
-	LocalMeta  CoreTable
-	SharedMeta *CoreTable
-	EvalState  FragmentEvaluationState
-	Builders   *CoreTable
-	Template   *Fragment
+	Name          string
+	Type          FragmentType
+	Code          string
+	Depth         int
+	Parent        *Fragment
+	LocalMeta     CoreTable
+	SharedMeta    *CoreTable
+	EvalState     FragmentEvaluationState
+	Builders      *CoreTable
+	Template      *Fragment
+	FragmentCache *FragmentCache
 }
 
-func (f *Fragment) MakeChild(name string, code string) *Fragment {
+func (f *Fragment) MakeChild(name string, code string, cache *FragmentCache) *Fragment {
 	return &Fragment{
-		Name:       name,
-		Type:       FRAGMENT,
-		Code:       code,
-		Depth:      f.Depth + 1,
-		Parent:     f,
-		LocalMeta:  *NewEmptyCoreTable(),
-		SharedMeta: f.SharedMeta,
+		Name:          name,
+		Type:          FRAGMENT,
+		Code:          code,
+		Depth:         f.Depth + 1,
+		Parent:        f,
+		LocalMeta:     *NewEmptyCoreTable(),
+		SharedMeta:    f.SharedMeta,
+		FragmentCache: cache,
 	}
 }
 
@@ -142,8 +144,14 @@ func (f *Fragment) NewChildFragmentFromName(name string) *Fragment {
 		panic(err)
 	}
 
-	// read the file
-	b := make([]byte, 1024)
+	// Get the size of the file
+	fi, err := file.Stat()
+	if err != nil {
+		panic(err)
+	}
+
+	// Read the file
+	b := make([]byte, fi.Size())
 	n, err := file.Read(b)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
@@ -151,7 +159,7 @@ func (f *Fragment) NewChildFragmentFromName(name string) *Fragment {
 	}
 
 	// create a new fragment
-	return f.MakeChild(name, string(b[:n]))
+	return f.MakeChild(name, string(b[:n]), f.FragmentCache)
 }
 
 /*
@@ -238,6 +246,11 @@ func (f *Fragment) Evaluate() string {
 		}
 	}
 
+	fmt.Println(f.FragmentCache, f.Name)
+
+	// Add the fragment to the cache
+	f.FragmentCache.Add(f.Name, f)
+
 	return result.String()
 }
 
@@ -248,6 +261,10 @@ func (f *Fragment) WithContent(content string, of *Fragment) string {
 
 	// Replace ${CONTENT} in the fragment code with the content provided
 	f.LocalMeta.v["CONTENT"] = NewCoreString(content)
+
+	// Set the fragment's cache to the provided fragment's cache
+	log.Info("fragment cache", "name", f.Name, "cache", f.FragmentCache)
+	log.Info("of cache", "name", of.Name, "cache", of.FragmentCache)
 
 	c := f.Evaluate()
 	return c

@@ -10,6 +10,7 @@ type CoreType interface {
 	goType() interface{}
 	luaType(L *lua.LState) lua.LValue
 	stringRepresentation() string
+	clone() CoreType
 }
 
 type CoreNil struct{}
@@ -19,6 +20,7 @@ func NewCoreNilL(lv lua.LValue) *CoreNil            { return &CoreNil{} }
 func (c *CoreNil) goType() interface{}              { return nil }
 func (c *CoreNil) luaType(L *lua.LState) lua.LValue { return lua.LNil }
 func (c *CoreNil) stringRepresentation() string     { return "nil" }
+func (c *CoreNil) clone() CoreType                  { return NewCoreNil() }
 
 type CoreBool struct{ v bool }
 
@@ -34,6 +36,7 @@ func (c *CoreBool) stringRepresentation() string {
 	}
 	return "false"
 }
+func (c *CoreBool) clone() CoreType { return NewCoreBool(c.v) }
 
 type CoreNumber struct{ v float64 }
 
@@ -44,6 +47,7 @@ func NewCoreNumberL(lv lua.LValue) *CoreNumber {
 func (c *CoreNumber) goType() interface{}              { return c.v }
 func (c *CoreNumber) luaType(L *lua.LState) lua.LValue { return lua.LNumber(c.v) }
 func (c *CoreNumber) stringRepresentation() string     { return fmt.Sprintf("%f", c.v) }
+func (c *CoreNumber) clone() CoreType                  { return NewCoreNumber(c.v) }
 
 type CoreString struct{ v string }
 
@@ -54,6 +58,7 @@ func NewCoreStringL(lv lua.LValue) *CoreString {
 func (c *CoreString) goType() interface{}              { return c.v }
 func (c *CoreString) luaType(L *lua.LState) lua.LValue { return lua.LString(c.v) }
 func (c *CoreString) stringRepresentation() string     { return c.v }
+func (c *CoreString) clone() CoreType                  { return NewCoreString(c.v) }
 
 type CoreTable struct{ v map[string]CoreType }
 
@@ -107,10 +112,20 @@ func (c *CoreTable) merge(other *CoreTable) {
 	}
 }
 func (c *CoreTable) stringRepresentation() string {
-	// format:
-	// <Table with 1 item(s)>
-
-	return fmt.Sprintf("<Table with %d item(s)>", len(c.v))
+	return fmt.Sprintf("[fragments.CoreTable with %d item%s]", len(c.v), func() string {
+		if len(c.v) == 1 {
+			return ""
+		} else {
+			return "s"
+		}
+	}())
+}
+func (c *CoreTable) clone() CoreType {
+	newMap := make(map[string]CoreType)
+	for k, v := range c.v {
+		newMap[k] = v.clone()
+	}
+	return NewCoreTable(newMap)
 }
 
 type CoreFunction struct{ v *lua.LFunction }
@@ -122,6 +137,7 @@ func NewCoreFunctionL(lv lua.LValue) *CoreFunction {
 func (c *CoreFunction) goType() interface{}              { return c.v }
 func (c *CoreFunction) luaType(L *lua.LState) lua.LValue { return c.v }
 func (c *CoreFunction) stringRepresentation() string     { return "<Lua Function>" }
+func (c *CoreFunction) clone() CoreType                  { return NewCoreFunction(c.v) }
 
 type CoreUserData struct{ v *lua.LUserData }
 
@@ -131,6 +147,7 @@ func (c *CoreUserData) luaType(L *lua.LState) lua.LValue {
 	return c.v
 }
 func (c *CoreUserData) stringRepresentation() string { return "<Lua UserData>" }
+func (c *CoreUserData) clone() CoreType              { return NewCoreUserData(c.v) }
 
 func luaToCoreType(lv lua.LValue) CoreType {
 	switch lv.Type() {

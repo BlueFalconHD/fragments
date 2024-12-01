@@ -8,6 +8,35 @@ import (
 	"strings"
 )
 
+type FragmentCache map[string]*Fragment
+
+func (c FragmentCache) Add(name string, f *Fragment) {
+	if c == nil {
+		c = make(FragmentCache)
+	}
+
+	log.Info("Adding fragment to cache", "name", name)
+
+	c[name] = f
+}
+
+func (c FragmentCache) Get(name string) *Fragment {
+
+	// Ensure the fragment exists
+	if f, ok := c[name]; ok {
+		log.Info("Fragment found in cache", "name", name)
+		return f
+	}
+
+	log.Info("Fragment not found in cache", "name", name)
+
+	// If it doesn't exist, get the fragment, evaluate it, and add it to the cache
+	f := GetFragmentFromName(name, FRAGMENT)
+	f.Evaluate() // the add method is called in this function, no need to call it again
+
+	return f
+}
+
 type LFragment struct {
 	Fragment   *Fragment
 	Parent     *LFragment
@@ -76,13 +105,14 @@ func checkFragment(L *lua.LState) *LFragment {
 	if v, ok := ud.Value.(*LFragment); ok {
 		return v
 	}
-	L.ArgError(1, "fragment expected")
+	L.ArgError(1, fmt.Sprintf("fragment expected, got %s", L.Get(1).Type().String()))
 	return nil
 }
 
 var fragmentMethods = map[string]lua.LGFunction{
 	"getMeta":       fragmentGetMeta,
 	"getSharedMeta": fragmentGetSharedMeta,
+	"getBothMeta":   fragmentGetBothMeta,
 	"setMeta":       fragmentSetMeta,
 	"meta":          fragmentMergeMeta,
 	"setSharedMeta": fragmentSetSharedMeta,
@@ -218,6 +248,17 @@ func fragmentMergeSharedMeta(L *lua.LState) int {
 	return 0
 }
 
+func fragmentGetBothMeta(L *lua.LState) int {
+	f := checkFragment(L)
+	key := L.CheckString(2)
+	value := getNestedValue(f.SharedMeta, key)
+	if value == nil {
+		value = getNestedValue(f.LocalMeta, key)
+	}
+	L.Push(value.luaType(L))
+	return 1
+}
+
 func fragmentParent(L *lua.LState) int {
 	f := checkFragment(L)
 
@@ -274,6 +315,8 @@ func fragmentSetTemplate(L *lua.LState) int {
 	t := GetFragmentFromName(L.CheckString(2), TEMPLATE)
 	f.Fragment.Template = t
 
+	t.FragmentCache = f.Fragment.FragmentCache
+
 	return 0
 }
 
@@ -284,6 +327,36 @@ func customPrint(L *lua.LState) int {
 	}
 	fmt.Println()
 	return 0
+}
+
+func getFragment(L *lua.LState) int {
+	f := checkFragment(L)
+	if L.GetTop() < 2 {
+		L.ArgError(2, "string expected")
+	}
+
+	if L.Get(2).Type() != lua.LTString {
+		L.ArgError(2, "string expected")
+	}
+
+	name := L.CheckString(2)
+
+	// Get the fragment cache from the LFragment
+	fc := f.Fragment.FragmentCache
+
+	// Get the fragment from the cache
+	frag := fc.Get(name)
+
+	// Make an LFragment from the fragment
+	lf := frag.MakeLFragment()
+
+	// Push the fragment to the stack
+	ud := L.NewUserData()
+	ud.Value = lf
+	L.SetMetatable(ud, L.GetTypeMetatable(luaFragmentTypeName))
+	L.Push(ud)
+
+	return 1
 }
 
 // Helper functions to handle nested keys
@@ -360,11 +433,6 @@ func renderMarkdown(L *lua.LState) int {
 // TODO: remove testing stuff
 
 const fc = `
--- fragments/hello.frag
--- this is the lua body of our fragment
-
--- we can do some cool stuff here
-
 this:template("post")
 
 function getStringFormattedDate()
@@ -381,7 +449,9 @@ this:sharedMeta {
 	postTitle = "Hello, World!",
 	postDescription = "This is a test post.",
 	postDate = getStringFormattedDate()
-}	
+}
+
+print("this has been run")
 
 this:builders {
     randomBuilder = function()
@@ -417,6 +487,11 @@ this:builders {
 			end
 		end
 		return result
+	end,
+	lazyTest = function()
+		-- This is a test of lazy evaluation
+		-- It will return a table with the current time
+		return this:lazyEvaluateMeta().title
 	end
 }
 ---
@@ -436,24 +511,62 @@ This is a paragraph.
 Test fragment with content:
 
 @{ihavecontent[[This is the content of the fragment]]}
+`
 
+const otherFc = `
+-- this is the other fragment she tells me not to worry about
+
+this:builders {
+	getTheOtherFragment = function()
+		local f = getFragment(this, "page")
+		return "The other fragment's title: " .. f:getSharedMeta("author")
+	end
+}
+
+---
+
+@{../page/index}
+
+*{getTheOtherFragment}
 `
 
 func testLua() {
 
+	fcache := make(FragmentCache)
+
 	pf := &Fragment{
-		Name:       "Parent Fragment",
-		Code:       fc,
-		Depth:      0,
-		Parent:     nil,
-		LocalMeta:  *NewEmptyCoreTable(),
-		SharedMeta: NewEmptyCoreTable(),
-		Builders:   NewEmptyCoreTable(),
+		Name:          "parent",
+		Code:          fc,
+		Depth:         0,
+		Parent:        nil,
+		LocalMeta:     *NewEmptyCoreTable(),
+		SharedMeta:    NewEmptyCoreTable(),
+		Builders:      NewEmptyCoreTable(),
+		FragmentCache: &fcache,
 	}
 
 	pf.LocalMeta.v["key"] = NewCoreString("This is a key")
 
-	log.Info("Output of evaluation", "result", pf.Evaluate())
+	log.Info("Output of evaluation of parent", "result", pf.Evaluate())
+
+	// Print the keys of the fragment cache
+	for k := range fcache {
+		log.Info("Fragment cache key", "key", k)
+	}
+
+	pof := &Fragment{
+		Name:          "other",
+		Code:          otherFc,
+		Depth:         0,
+		Parent:        nil,
+		LocalMeta:     *NewEmptyCoreTable(),
+		SharedMeta:    NewEmptyCoreTable(),
+		Builders:      NewEmptyCoreTable(),
+		FragmentCache: &fcache,
+	}
+
+	log.Info("Output of evaluation of other", "result", pof.Evaluate())
+
 }
 
 func (f *Fragment) CreateState() *lua.LState {
@@ -463,6 +576,9 @@ func (f *Fragment) CreateState() *lua.LState {
 
 	// Register the markdown rendering function
 	L.SetGlobal("renderMarkdown", L.NewFunction(renderMarkdown))
+
+	// Register the getFragment function
+	L.SetGlobal("getFragment", L.NewFunction(getFragment))
 
 	libs.Preload(L)
 	lf.registerThisFragmentAs(L, "this")
