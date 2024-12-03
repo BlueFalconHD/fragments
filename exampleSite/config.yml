@@ -4,9 +4,6 @@
 fragments: "fragment"
 pages: "page"
 
-# default page template
-page_template: "fragment/page.frag"
-
 # build directory
 build: "build"
 
