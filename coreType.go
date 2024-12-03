@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/charmbracelet/log"
 	"github.com/k0kubun/pp/v3"
 	lua "github.com/yuin/gopher-lua"
+	"strings"
 )
 
 type CoreType interface {
@@ -78,13 +80,112 @@ func (c *CoreTable) goType() interface{} {
 	}
 	return goMap
 }
+
+// coreType.go
+
 func (c *CoreTable) luaType(L *lua.LState) lua.LValue {
-	lt := L.NewTable()
-	for k, v := range c.v {
-		lt.RawSetString(k, v.luaType(L))
+	ud := L.NewUserData()
+	ud.Value = c
+
+	// Get or create the metatable for CoreTable
+	mt := L.NewTypeMetatable("CoreTable")
+
+	// If metamethods haven't been set, set them
+	if mt.RawGetString("__index") == lua.LNil {
+		// __index metamethod
+		L.SetField(mt, "__index", L.NewFunction(coreTableIndex))
+		// __newindex metamethod
+		L.SetField(mt, "__newindex", L.NewFunction(coreTableNewIndex))
+		// __pairs metamethod
+		L.SetField(mt, "__pairs", L.NewFunction(coreTablePairs))
 	}
-	return lt
+
+	L.SetMetatable(ud, mt)
+	return ud
 }
+
+func coreTableIndex(L *lua.LState) int {
+	ud := L.CheckUserData(1)
+	key := L.ToString(2)
+
+	c, ok := ud.Value.(*CoreTable)
+	if !ok {
+		L.ArgError(1, "CoreTable expected")
+		return 0
+	}
+
+	log.Info("coreTableIndex", "key", key, "value", c.v[key])
+	c.prettyPrint()
+
+	if val, ok := c.v[key]; ok {
+		L.Push(val.luaType(L))
+		return 1
+	}
+	L.Push(lua.LNil)
+	return 1
+}
+
+func coreTableNewIndex(L *lua.LState) int {
+	ud := L.CheckUserData(1)
+	key := L.ToString(2)
+	value := L.Get(3)
+
+	c, ok := ud.Value.(*CoreTable)
+	if !ok {
+		L.ArgError(1, "CoreTable expected")
+		return 0
+	}
+
+	c.v[key] = luaToCoreType(value)
+	return 0
+}
+
+func coreTablePairs(L *lua.LState) int {
+	ud := L.CheckUserData(1)
+	c, ok := ud.Value.(*CoreTable)
+	if !ok {
+		L.ArgError(1, "CoreTable expected")
+		return 0
+	}
+
+	keys := make([]string, 0, len(c.v))
+	for k := range c.v {
+		keys = append(keys, k)
+	}
+
+	state := &mapIteratorState{
+		keys:  keys,
+		index: 0,
+	}
+	udState := L.NewUserData()
+	udState.Value = state
+
+	L.Push(L.NewFunction(func(L *lua.LState) int {
+		state := L.CheckUserData(1).Value.(*mapIteratorState)
+		if state.index >= len(state.keys) {
+			return 0
+		}
+		key := state.keys[state.index]
+		val := c.v[key]
+		L.Push(lua.LString(key))
+		L.Push(val.luaType(L))
+		state.index++
+		return 2
+	}))
+	L.Push(udState)
+	L.Push(lua.LNil)
+	return 3
+}
+
+type mapIteratorState struct {
+	keys  []string
+	index int
+}
+
+func registerCoreTableType(L *lua.LState) {
+	L.NewTypeMetatable("CoreTable")
+}
+
 func (c *CoreTable) prettyPrint() {
 	_, err := pp.Print(c.goType())
 	if err != nil {
@@ -92,15 +193,15 @@ func (c *CoreTable) prettyPrint() {
 		return
 	}
 }
-func (c *CoreTable) merge(other *CoreTable) {
+func (c *CoreTable) mergeMut(other *CoreTable) {
 	for k, v := range other.v {
 		if existingVal, exists := c.v[k]; exists {
 			existingTable, isExistingTable := existingVal.(*CoreTable)
 			otherTable, isOtherTable := v.(*CoreTable)
 
 			if isExistingTable && existingTable != nil && isOtherTable && otherTable != nil {
-				// Both are CoreTable and not nil, perform recursive merge
-				existingTable.merge(otherTable)
+				// Both are CoreTable and not nil, perform recursive merge_mut
+				existingTable.mergeMut(otherTable)
 			} else {
 				// Either not CoreTable or types differ, overwrite with other.v[k]
 				c.v[k] = v
@@ -111,6 +212,32 @@ func (c *CoreTable) merge(other *CoreTable) {
 		}
 	}
 }
+
+func (c *CoreTable) merge(other *CoreTable) *CoreTable {
+	newMap := make(map[string]CoreType)
+	for k, v := range c.v {
+		newMap[k] = v.clone()
+	}
+	for k, v := range other.v {
+		if existingVal, exists := newMap[k]; exists {
+			existingTable, isExistingTable := existingVal.(*CoreTable)
+			otherTable, isOtherTable := v.(*CoreTable)
+
+			if isExistingTable && existingTable != nil && isOtherTable && otherTable != nil {
+				// Both are CoreTable and not nil, perform recursive merge_mut
+				existingTable.mergeMut(otherTable)
+			} else {
+				// Either not CoreTable or types differ, overwrite with other.v[k]
+				newMap[k] = v
+			}
+		} else {
+			// Key does not exist in c.v, add it
+			newMap[k] = v
+		}
+	}
+	return NewCoreTable(newMap)
+}
+
 func (c *CoreTable) stringRepresentation() string {
 	return fmt.Sprintf("[fragments.CoreTable with %d item%s]", len(c.v), func() string {
 		if len(c.v) == 1 {
@@ -217,5 +344,55 @@ func convertToString(v interface{}) string {
 		return fmt.Sprintf("%v", val)
 	default:
 		return ""
+	}
+}
+
+func getNestedValue(table *CoreTable, key string) CoreType {
+	keys := strings.Split(key, ".")
+	current := table
+	for i, k := range keys {
+		val, ok := current.v[k]
+		if !ok {
+			log.Error("Key not found", "key", k, "table", current)
+			return NewCoreNil()
+		}
+		if i == len(keys)-1 {
+			return val
+		}
+		// Intermediate keys, expect CoreTable
+		if ct, ok := val.(*CoreTable); ok {
+			current = ct
+		} else {
+			return NewCoreNil()
+		}
+	}
+	return NewCoreNil()
+}
+
+func setNestedValue(table *CoreTable, key string, value CoreType) {
+	keys := strings.Split(key, ".")
+	current := table
+	for i, k := range keys {
+		if i == len(keys)-1 {
+			// Last key, set the value
+			current.v[k] = value
+			return
+		}
+		// Intermediate keys, expect CoreTable
+		if val, ok := current.v[k]; ok {
+			if ct, ok := val.(*CoreTable); ok {
+				current = ct
+			} else {
+				// Not a table, create a new one
+				newTable := NewCoreTable(make(map[string]CoreType))
+				current.v[k] = newTable
+				current = newTable
+			}
+		} else {
+			// Key does not exist, create a new table
+			newTable := NewCoreTable(make(map[string]CoreType))
+			current.v[k] = newTable
+			current = newTable
+		}
 	}
 }

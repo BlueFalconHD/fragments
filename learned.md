@@ -1,1 +1,0 @@
-- Use a cache of objects to avoid cyclic initialization

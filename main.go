@@ -1,38 +1,46 @@
 package main
 
 import (
-	"fmt"
-	"time"
+	"github.com/charmbracelet/log"
 )
 
 type metaMap map[string]string
 type fragmentMap map[string]*Fragment
 
-func getGlobalMeta() metaMap {
-	currentTime := time.Now()
-	return metaMap{
-		"timestamp": currentTime.Format(time.RFC3339),
-		"date":      currentTime.Format("2006-01-02"),
-		"month":     currentTime.Format("01"),
-		"year":      currentTime.Format("2006"),
-		"unix":      fmt.Sprintf("%d", currentTime.Unix()),
-	}
-}
+const otherFc = `
+this:setTemplate("page")
 
-func site() *Site {
-	return &Site{
-		fragments: make(fragmentMap),
-		meta:      getGlobalMeta(),
-	}
-}
+print(string.sub(this.name, 1, 2))
 
-type Site struct {
-	fragments fragmentMap
-	meta      metaMap
+---
+
+@{../page/index}
+`
+
+func testLua() {
+
+	fcache := make(FragmentCache)
+
+	// Print the keys of the fragment cache
+	for k := range fcache {
+		log.Info("Fragment cache key", "key", k)
+	}
+
+	pof := &Fragment{
+		Name:          "other",
+		Code:          otherFc,
+		Depth:         0,
+		Parent:        nil,
+		LocalMeta:     *NewEmptyCoreTable(),
+		SharedMeta:    NewEmptyCoreTable(),
+		Builders:      NewEmptyCoreTable(),
+		FragmentCache: &fcache,
+	}
+
+	log.Info("Output of evaluation of other", "result", pof.Evaluate())
+
 }
 
 func main() {
-	// site := site()
-
 	testLua()
 }

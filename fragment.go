@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/charmbracelet/log"
+	libs "github.com/vadv/gopher-lua-libs"
+	lua "github.com/yuin/gopher-lua"
 	"os"
 	"strings"
 )
@@ -23,8 +25,7 @@ const (
 	TEMPLATE
 )
 
-// TODO: refactor with different fragment types, support templated pages, and template fragments.
-// idea dump: template fragments have access to shared metadata as well.
+type FragmentCache map[string]*Fragment
 
 type Fragment struct {
 	Name          string
@@ -49,6 +50,7 @@ func (f *Fragment) MakeChild(name string, code string, cache *FragmentCache) *Fr
 		Parent:        f,
 		LocalMeta:     *NewEmptyCoreTable(),
 		SharedMeta:    f.SharedMeta,
+		Builders:      NewEmptyCoreTable(),
 		FragmentCache: cache,
 	}
 }
@@ -81,7 +83,7 @@ func (f *Fragment) MakeLFragment() *LFragment {
 	}
 }
 
-func GetFragmentFromName(name string, fragType FragmentType) *Fragment {
+func GetFragmentFromName(name string, fragType FragmentType, cache *FragmentCache) *Fragment {
 	// TODO: determine where a good root for the fragments are, currently just the same directory where run
 
 	rd := "exampleSite/fragment/"
@@ -114,52 +116,48 @@ func GetFragmentFromName(name string, fragType FragmentType) *Fragment {
 
 	// create a new fragment
 	return &Fragment{
-		Name:       name,
-		Type:       fragType,
-		Code:       string(b[:n]),
-		Depth:      0,
-		Parent:     nil,
-		LocalMeta:  *NewEmptyCoreTable(),
-		SharedMeta: NewEmptyCoreTable(),
+		Name:          name,
+		Type:          fragType,
+		Code:          string(b[:n]),
+		Depth:         0,
+		Parent:        nil,
+		LocalMeta:     *NewEmptyCoreTable(),
+		SharedMeta:    NewEmptyCoreTable(),
+		Builders:      NewEmptyCoreTable(),
+		FragmentCache: cache,
 	}
+}
+
+func (c *FragmentCache) Get(name string) *Fragment {
+	if f, ok := (*c)[name]; ok {
+		return f
+	}
+	f := GetFragmentFromName(name, FRAGMENT, c)
+	if f == nil {
+		log.Error("Fragment not found", "name", name)
+		return nil
+	}
+
+	f.Evaluate()
+	return f
+}
+
+func (c *FragmentCache) Add(name string, f *Fragment) {
+	if *c == nil {
+		*c = make(FragmentCache)
+	}
+	(*c)[name] = f
 }
 
 func (f *Fragment) NewChildFragmentFromName(name string) *Fragment {
 	// TODO: determine where a good root for the fragments are, currently just the same directory where run
 
-	rd := "exampleSite/fragment/"
+	nf := GetFragmentFromName(name, FRAGMENT, f.FragmentCache)
 
-	// get run directory
-	dir, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
+	// Set the parent of the new fragment to this fragment
+	nf.Parent = f
 
-	// get fragment directory
-	dir = dir + "/" + rd
-
-	// look for the name provided + ".frag"
-	file, err := os.Open(dir + name + ".frag")
-	if err != nil {
-		panic(err)
-	}
-
-	// Get the size of the file
-	fi, err := file.Stat()
-	if err != nil {
-		panic(err)
-	}
-
-	// Read the file
-	b := make([]byte, fi.Size())
-	n, err := file.Read(b)
-	if err != nil {
-		fmt.Println("Error reading file:", err)
-		panic(err)
-	}
-
-	// create a new fragment
-	return f.MakeChild(name, string(b[:n]), f.FragmentCache)
+	return nf
 }
 
 /*
@@ -246,8 +244,6 @@ func (f *Fragment) Evaluate() string {
 		}
 	}
 
-	fmt.Println(f.FragmentCache, f.Name)
-
 	// Add the fragment to the cache
 	f.FragmentCache.Add(f.Name, f)
 
@@ -257,15 +253,39 @@ func (f *Fragment) Evaluate() string {
 func (f *Fragment) WithContent(content string, of *Fragment) string {
 
 	// Merge this fragment's shared metadata with the provided fragment's shared metadata
-	f.SharedMeta.merge(of.SharedMeta)
+	f.SharedMeta.mergeMut(of.SharedMeta)
 
 	// Replace ${CONTENT} in the fragment code with the content provided
 	f.LocalMeta.v["CONTENT"] = NewCoreString(content)
 
-	// Set the fragment's cache to the provided fragment's cache
-	log.Info("fragment cache", "name", f.Name, "cache", f.FragmentCache)
-	log.Info("of cache", "name", of.Name, "cache", of.FragmentCache)
-
 	c := f.Evaluate()
 	return c
+}
+
+func (f *Fragment) CreateState() *lua.LState {
+	lf := f.MakeLFragment()
+	L := lua.NewState()
+
+	// Register fragment and fragments module types
+	registerFragmentType(L)
+	registerFragmentsModuleType(L)
+	registerCoreTableType(L)
+
+	// Register the markdown rendering function
+	L.SetGlobal("renderMarkdown", L.NewFunction(renderMarkdown))
+
+	// Preload standard libraries
+	libs.Preload(L)
+
+	// Register 'this' fragment
+	lf.registerThisFragmentAs(L, "this")
+
+	// Create and register the fragments module
+	fragmentsModule := newFragmentsModule(f.FragmentCache, "exampleSite/fragment/", "exampleSite/page/")
+	ud := L.NewUserData()
+	ud.Value = fragmentsModule
+	L.SetMetatable(ud, L.GetTypeMetatable(luaFragmentModuleTypeName))
+	L.SetGlobal("fragments", ud)
+
+	return L
 }

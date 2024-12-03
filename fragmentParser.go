@@ -45,7 +45,7 @@ type TextNode struct {
 	column int
 }
 
-func (n *TextNode) Evaluate(f *Fragment, L *lua.LState) (string, error) {
+func (n *TextNode) Evaluate(_ *Fragment, _ *lua.LState) (string, error) {
 	return n.Text, nil
 }
 
@@ -63,7 +63,7 @@ type MetaReferenceNode struct {
 	column int
 }
 
-func (n *MetaReferenceNode) Evaluate(f *Fragment, L *lua.LState) (string, error) {
+func (n *MetaReferenceNode) Evaluate(f *Fragment, _ *lua.LState) (string, error) {
 
 	// Get the value from the fragment's shared metadata first
 	value := f.SharedMeta.v[n.Key]
@@ -283,6 +283,7 @@ func parseReference(lexer *Lexer, startToken Token) (string, error) {
 }
 
 func parseReferenceWithContent(lexer *Lexer, startToken Token) (string, string, error) {
+
 	var nameBuilder strings.Builder
 	braceCount := 1
 	startLine := startToken.Line
@@ -290,30 +291,39 @@ func parseReferenceWithContent(lexer *Lexer, startToken Token) (string, string, 
 
 	for {
 		tok := lexer.NextToken()
+
 		if tok.Type == TOKEN_OPEN_BRACE {
 			braceCount++
+
 			nameBuilder.WriteString(tok.Literal)
 		} else if tok.Type == TOKEN_CLOSE_BRACE {
 			braceCount--
+
 			if braceCount == 0 {
+
 				break
 			}
 			nameBuilder.WriteString(tok.Literal)
 		} else if tok.Type == TOKEN_DOUBLE_OPEN_BRACKET {
-			// Start of content
+
 			content, err := parseContent(lexer, tok)
 			if err != nil {
+
 				return "", "", err
 			}
-			// Continue parsing until the closing brace
+
 			for {
 				tok := lexer.NextToken()
+
 				if tok.Type == TOKEN_CLOSE_BRACE {
 					braceCount--
+
 					if braceCount == 0 {
+
 						break
 					}
 				} else if tok.Type == TOKEN_EOF {
+
 					return "", "", &ParseError{
 						Line:    startLine,
 						Column:  startColumn,
@@ -325,12 +335,14 @@ func parseReferenceWithContent(lexer *Lexer, startToken Token) (string, string, 
 			}
 			return strings.TrimSpace(nameBuilder.String()), content, nil
 		} else if tok.Type == TOKEN_EOF {
+
 			return "", "", &ParseError{
 				Line:    startLine,
 				Column:  startColumn,
 				Message: "Unexpected EOF while parsing reference",
 			}
 		} else {
+
 			nameBuilder.WriteString(tok.Literal)
 		}
 	}
@@ -339,32 +351,39 @@ func parseReferenceWithContent(lexer *Lexer, startToken Token) (string, string, 
 }
 
 func parseContent(lexer *Lexer, startToken Token) (string, error) {
+
 	var contentBuilder strings.Builder
 	bracketCount := 1
-	startLine := startToken.Line
-	startColumn := startToken.Column
 
 	for {
 		tok := lexer.NextToken()
+
 		if tok.Type == TOKEN_DOUBLE_OPEN_BRACKET {
 			bracketCount++
+
 			contentBuilder.WriteString(tok.Literal)
 		} else if tok.Type == TOKEN_DOUBLE_CLOSE_BRACKET {
 			bracketCount--
+
 			if bracketCount == 0 {
+
 				break
 			}
 			contentBuilder.WriteString(tok.Literal)
 		} else if tok.Type == TOKEN_EOF {
+
 			return "", &ParseError{
-				Line:    startLine,
-				Column:  startColumn,
+				Line:    startToken.Line,
+				Column:  startToken.Column,
 				Message: "Unexpected EOF while parsing content",
 			}
 		} else {
+
 			contentBuilder.WriteString(tok.Literal)
 		}
 	}
 
-	return contentBuilder.String(), nil
+	parsedContent := contentBuilder.String()
+
+	return parsedContent, nil
 }

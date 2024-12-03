@@ -1,21 +1,28 @@
-
-
-function blogpost(path)
-    print("Path: " .. path)
-    f = getFragment(this, path)
-    print("Fragment: " .. f.code)
-    return string.format("<div class='blogpost'><h2>%s</h2><h3>%s on %s</h3><p>%s</p></div>", f:getMeta("postTitle"), f:getMeta("author"), f:getMeta("postDate"), f:getMeta("postDescription"))
+function blogpost(title, date, author, description)
+    return  "<a href='posts/" .. title .. "'><div class='blogpost'>\n" ..
+            "   <h1>" .. title .. "</h1>\n" ..
+            "   <p>" .. description .. "</p>\n" ..
+            "   <p>" .. date .. " - " .. author .. "</p>\n" ..
+            "</div></a>\n"
 end
 
-this:builders {
-    blogpostList = function(content)
-        -- For now let's just say there is one blogpost, 'posts/example.frag'
-        p = { "../page/posts/example" }
+this:addBuilders {
+    blogpostList = function()
+        p = {}
 
+        for file in io.popen('ls exampleSite/page/posts'):lines() do
+            local f = fragments:get("../page/posts/" .. string.sub(file, 1, -6))
+            table.insert(p, {
+                title = f:getSharedMeta("postTitle"),
+                date = f:getSharedMeta("postDate"),
+                author = f:getSharedMeta("author"),
+                description = f:getSharedMeta("postDescription")
+            })
+        end
 
         local result = ""
         for i, v in ipairs(p) do
-            result = result .. blogpost(v)
+            result = result .. blogpost(v.title, v.date, v.author, v.description)
         end
 
         return result
@@ -25,5 +32,4 @@ this:builders {
 
 ---
 
-<h1>Blogposts</h1>
 *{blogpostList}

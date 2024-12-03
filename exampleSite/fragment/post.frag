@@ -1,4 +1,4 @@
-this:template("page")
+this:setTemplate("page")
 
 -- We have the following meta available to us for a standard post
 -- postTitle
