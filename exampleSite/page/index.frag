@@ -1,4 +1,6 @@
----
+this:setTemplate("page")
+
+~~~
 
 <h1 class="title">Welcome to my site!</h1>
 

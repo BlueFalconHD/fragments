@@ -6,10 +6,10 @@ import (
 )
 
 type Config struct {
-	ConfigFilePath string
-	FragmentsPath  string `yaml:"fragments"`
-	PagePath       string `yaml:"pages"`
-	BuildPath      string `yaml:"build"`
+	SiteRoot      string
+	FragmentsPath string `yaml:"fragments"`
+	PagePath      string `yaml:"pages"`
+	BuildPath     string `yaml:"build"`
 }
 
 func GetConfiguration(path string) (*Config, error) {
@@ -24,6 +24,7 @@ func GetConfiguration(path string) (*Config, error) {
 		return nil, err
 	}
 
-	cfg.ConfigFilePath = path
+	// Get the root of the site, the directory in which the config file (provided path) is located
+	cfg.SiteRoot = path[:len(path)-len("config.yaml")]
 	return cfg, nil
 }

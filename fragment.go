@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/charmbracelet/log"
 	libs "github.com/vadv/gopher-lua-libs"
 	lua "github.com/yuin/gopher-lua"
@@ -25,7 +24,19 @@ const (
 	TEMPLATE
 )
 
-type FragmentCache map[string]*Fragment
+//type FragmentCache map[string]*Fragment
+
+type FragmentCache struct {
+	Cache  map[string]*Fragment
+	Config *Config
+}
+
+func NewFragmentCache(c *Config) *FragmentCache {
+	return &FragmentCache{
+		Cache:  make(map[string]*Fragment),
+		Config: c,
+	}
+}
 
 type Fragment struct {
 	Name          string
@@ -39,9 +50,10 @@ type Fragment struct {
 	Builders      *CoreTable
 	Template      *Fragment
 	FragmentCache *FragmentCache
+	Config        *Config
 }
 
-func (f *Fragment) MakeChild(name string, code string, cache *FragmentCache) *Fragment {
+func (f *Fragment) MakeChild(name string, code string) *Fragment {
 	return &Fragment{
 		Name:          name,
 		Type:          FRAGMENT,
@@ -51,7 +63,8 @@ func (f *Fragment) MakeChild(name string, code string, cache *FragmentCache) *Fr
 		LocalMeta:     *NewEmptyCoreTable(),
 		SharedMeta:    f.SharedMeta,
 		Builders:      NewEmptyCoreTable(),
-		FragmentCache: cache,
+		FragmentCache: f.FragmentCache,
+		Config:        f.Config,
 	}
 }
 
@@ -86,31 +99,48 @@ func (f *Fragment) MakeLFragment() *LFragment {
 func GetFragmentFromName(name string, fragType FragmentType, cache *FragmentCache) *Fragment {
 	// TODO: determine where a good root for the fragments are, currently just the same directory where run
 
-	rd := "exampleSite/fragment/"
+	// Depending on the type of fragment, get the directory specified in the config
+	var rd string
+	switch fragType {
+	case FRAGMENT:
+		rd = cache.Config.FragmentsPath
+	case PAGE:
+		rd = cache.Config.PagePath
+	case TEMPLATE:
+		rd = cache.Config.FragmentsPath
+	}
 
-	// get run directory
-	dir, err := os.Getwd()
+	cwd, err := os.Getwd()
 
 	if err != nil {
 		panic(err)
 	}
 
 	// get fragment directory
-	dir = dir + "/" + rd
+	dir := cwd + "/" + cache.Config.SiteRoot + "/" + rd
 
 	// look for the name provided + ".frag"
+
 	file, err := os.Open(dir + name + ".frag")
 
 	if err != nil {
 		panic(err)
 	}
 
+	// get size of file
+	fi, err := file.Stat()
+
+	if err != nil {
+		log.Error("Error getting file info:", err)
+		panic(err)
+	}
+
 	// read the file
-	b := make([]byte, 1024)
+	b := make([]byte, fi.Size())
 	n, err := file.Read(b)
 
 	if err != nil {
-		fmt.Println("Error reading file:", err)
+		log.Error("Error reading file:", err)
 		panic(err)
 	}
 
@@ -125,14 +155,15 @@ func GetFragmentFromName(name string, fragType FragmentType, cache *FragmentCach
 		SharedMeta:    NewEmptyCoreTable(),
 		Builders:      NewEmptyCoreTable(),
 		FragmentCache: cache,
+		Config:        cache.Config,
 	}
 }
 
-func (c *FragmentCache) Get(name string) *Fragment {
-	if f, ok := (*c)[name]; ok {
+func (c *FragmentCache) Get(name string, fragType FragmentType) *Fragment {
+	if f, ok := (c.Cache)[name]; ok {
 		return f
 	}
-	f := GetFragmentFromName(name, FRAGMENT, c)
+	f := GetFragmentFromName(name, fragType, c)
 	if f == nil {
 		log.Error("Fragment not found", "name", name)
 		return nil
@@ -143,10 +174,13 @@ func (c *FragmentCache) Get(name string) *Fragment {
 }
 
 func (c *FragmentCache) Add(name string, f *Fragment) {
-	if *c == nil {
-		*c = make(FragmentCache)
+	if c == nil {
+		*c = FragmentCache{
+			Cache:  make(map[string]*Fragment),
+			Config: f.Config,
+		}
 	}
-	(*c)[name] = f
+	(c.Cache)[name] = f
 }
 
 func (f *Fragment) NewChildFragmentFromName(name string) *Fragment {
@@ -183,17 +217,17 @@ func (f *Fragment) Evaluate() string {
 	L := f.CreateState()
 	defer L.Close()
 
-	parts := strings.Split(f.Code, "---")
-	var luaCode, code string
+	cleaned := strings.TrimSpace(f.Code)
 
-	if len(parts) == 1 {
-		// No "---" found, treat the entire f.Code as "code" part
-		luaCode = ""
-		code = parts[0]
-	} else {
-		// Split into lua and code parts as expected
+	// Split fragment into lua and code parts, separated by '~~~'
+	parts := strings.Split(cleaned, "~~~")
+	var luaCode, code string
+	if len(parts) >= 2 {
 		luaCode = parts[0]
 		code = parts[1]
+	} else {
+		luaCode = ""
+		code = parts[0]
 	}
 
 	f.EvalState = EVALUATING
@@ -210,7 +244,7 @@ func (f *Fragment) Evaluate() string {
 	}
 
 	// Parse code into AST
-	nodes, err := ParseCode(code)
+	nodes, err := ParseCode(code, f)
 	if err != nil {
 		log.Error(err)
 		return ""

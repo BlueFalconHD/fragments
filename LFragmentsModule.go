@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/charmbracelet/log"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -38,44 +37,66 @@ func checkFragmentsModule(L *lua.LState) *LFragmentsModule {
 	return nil
 }
 
-func fragmentsModuleGet(L *lua.LState) int {
-	log.Print("checkpoint 0")
+func fragmentsModuleGetFragment(L *lua.LState) int {
 
 	f := checkFragmentsModule(L)
 	if L.GetTop() < 2 {
 		L.ArgError(2, "string expected")
 	}
 
-	log.Print("checkpoint 1")
-
 	if L.Get(2).Type() != lua.LTString {
 		L.ArgError(2, "string expected")
 	}
 
-	log.Print("checkpoint 2")
-
 	name := L.CheckString(2)
-
-	log.Print("checkpoint 3")
 
 	if f.FragmentCache == nil {
 		L.RaiseError("FragmentCache is not initialized.")
 		return 0
 	}
 
-	log.Print("checkpoint 4")
-
 	fc := f.FragmentCache
-	frag := fc.Get(name)
+	frag := fc.Get(name, FRAGMENT)
 
-	log.Print("checkpoint 5")
 	if frag == nil {
 		L.RaiseError("Fragment not found: %s", name)
 		return 0
 	}
 	lf := frag.MakeLFragment()
 
-	log.Print("checkpoint 6")
+	ud := L.NewUserData()
+	ud.Value = lf
+	L.SetMetatable(ud, L.GetTypeMetatable(luaFragmentTypeName))
+	L.Push(ud)
+
+	return 1
+}
+
+func fragmentsModuleGetPage(L *lua.LState) int {
+	f := checkFragmentsModule(L)
+	if L.GetTop() < 2 {
+		L.ArgError(2, "string expected")
+	}
+
+	if L.Get(2).Type() != lua.LTString {
+		L.ArgError(2, "string expected")
+	}
+
+	name := L.CheckString(2)
+
+	if f.FragmentCache == nil {
+		L.RaiseError("FragmentCache is not initialized.")
+		return 0
+	}
+
+	fc := f.FragmentCache
+	frag := fc.Get(name, PAGE)
+
+	if frag == nil {
+		L.RaiseError("Fragment not found: %s", name)
+		return 0
+	}
+	lf := frag.MakeLFragment()
 
 	ud := L.NewUserData()
 	ud.Value = lf
@@ -87,7 +108,8 @@ func fragmentsModuleGet(L *lua.LState) int {
 
 func getFragmentsModuleMethods() map[string]lua.LGFunction {
 	return map[string]lua.LGFunction{
-		"get": fragmentsModuleGet,
+		"getFragment": fragmentsModuleGetFragment,
+		"getPage":     fragmentsModuleGetPage,
 	}
 }
 

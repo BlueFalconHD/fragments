@@ -29,10 +29,11 @@ type Lexer struct {
 	ch           byte
 	line         int
 	column       int
+	fragment     *Fragment
 }
 
-func NewLexer(input string) *Lexer {
-	l := &Lexer{input: input, line: 1, column: 0}
+func NewLexer(input string, f *Fragment) *Lexer {
+	l := &Lexer{input: input, line: 1, column: 0, fragment: f}
 	l.readChar()
 	return l
 }
@@ -135,9 +136,6 @@ func (l *Lexer) NextToken() Token {
 }
 
 func (l *Lexer) skipWhitespace() {
-	//for l.ch == ' ' || l.ch == '\t' {
-	//	l.readChar()
-	//}
 	for l.ch == '\t' {
 		l.readChar()
 	}
@@ -154,6 +152,9 @@ func (l *Lexer) readText() string {
 	position := l.position
 	for l.ch != '\\' && l.ch != '@' && l.ch != '*' && l.ch != '$' &&
 		l.ch != '{' && l.ch != '}' && l.ch != '[' && l.ch != ']' && l.ch != 0 {
+		//if l.ch == '\n' {
+		//	break
+		//}
 		l.readChar()
 	}
 	return l.input[position:l.position]

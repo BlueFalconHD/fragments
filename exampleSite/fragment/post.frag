@@ -6,7 +6,7 @@ this:setTemplate("page")
 -- postDescription
 -- author
 
----
+~~~
 
 <h1>${postTitle}</h1>
 <p>${postDescription}</p>
