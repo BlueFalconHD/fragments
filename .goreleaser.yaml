@@ -8,8 +8,7 @@ gomod:
 
 builds:
   - id: fragments
-    # Build the main package in ./fragments
-    main: ./fragments
+    main: .
     binary: fragments
     env:
       - CGO_ENABLED=0
