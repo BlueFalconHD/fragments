@@ -1,3 +1,4 @@
+version: 2
 project_name: fragments
 
 dist: dist
@@ -7,8 +8,8 @@ gomod:
 
 builds:
   - id: fragments
-    dir: fragments
-    main: .
+    # Build the main package in ./fragments
+    main: ./fragments
     binary: fragments
     env:
       - CGO_ENABLED=0
@@ -27,12 +28,11 @@ builds:
 
 archives:
   - id: default
-    builds:
-      - fragments
+    ids: [fragments]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - LICENSE*
       - README*
@@ -55,7 +55,7 @@ changelog:
       - "^wip:"
 
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  version_template: "{{ .Tag }}-next"
 
 release:
   github:
