@@ -28,11 +28,11 @@ jobs:
 
       - name: Go env
         run: go env
-        working-directory: fragments
+        working-directory: .
 
       - name: Download dependencies
         run: go mod download
-        working-directory: fragments
+        working-directory: .
 
       - name: Run Goreleaser
         uses: goreleaser/goreleaser-action@v6
