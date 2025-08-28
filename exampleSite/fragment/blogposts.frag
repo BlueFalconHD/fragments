@@ -1,46 +1,53 @@
+function formatDate(d)
+    if d == nil or d == "" then return "" end
+    local y = string.sub(d, 1, 4)
+    local m = tonumber(string.sub(d, 6, 7))
+    local dayNum = tonumber(string.sub(d, 9, 10))
+    local MONTHS = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"}
+    local mname = MONTHS[m] or string.sub(d, 6, 7)
+    return mname .. " " .. tostring(dayNum) .. ", " .. y
+end
+
 function blogpost(id, title, date, author, description)
-    return  "<a href='posts/" .. id .. ".html'><div class='blogpost'>\n" ..
-            "   <h1>" .. title .. "</h1>\n" ..
+    local displayDate = formatDate(date)
+    local dateHtml = ""
+    if displayDate ~= "" then
+        dateHtml = " <i class='secondary'>(" .. displayDate .. ")</i>"
+    end
+    return  "<a class='unstyled-link' href='posts/" .. id .. ".html'><div class='blogpost'>\n" ..
+            "   <h3>" .. title .. dateHtml .. "</h3>\n" ..
             "   <p>" .. description .. "</p>\n" ..
-            "   <p>" .. date .. " - " .. author .. "</p>\n" ..
             "</div></a>\n"
 end
 
 function sortStringDate(a, b)
-    -- The date is in the format of YYYY-MM-DD
-    local a_year = tonumber(string.sub(a, 1, 4))
-    local a_month = tonumber(string.sub(a, 6, 7))
-    local a_day = tonumber(string.sub(a, 9, 10))
-
-    local b_year = tonumber(string.sub(b, 1, 4))
-    local b_month = tonumber(string.sub(b, 6, 7))
-    local b_day = tonumber(string.sub(b, 9, 10))
-
-    if a_year < b_year then
-        return true
-    elseif a_year > b_year then
-        if a_month < b_month then
-            return true
-        elseif a_month > b_month then
-            if a_day < b_day then
-                return true
-            end
-        end
-    end
+    -- Expect YYYY-MM-DD; return true if a is more recent than b (newest-first)
+    if a == nil and b == nil then return false end
+    if a == nil then return false end
+    if b == nil then return true end
+    if a == b then return false end
+    -- Lexicographic compare works for ISO dates; invert for descending
+    return a > b
 end
+
+
+
 
 this:addBuilders {
     blogpostList = function()
         p = {}
 
-        for file in io.popen('ls exampleSite/page/posts'):lines() do
-            local f = fragments:getPage("posts/" .. string.sub(file, 1, -6))
+        for id, f in pairs(fragments:getPagesUnder("posts")) do
+            local title = f:getSharedMeta("postTitle") or f:getLocalMeta("postTitle") or id
+            local date = f:getSharedMeta("postDate") or f:getLocalMeta("postDate") or ""
+            local author = f:getSharedMeta("author") or f:getLocalMeta("author") or ""
+            local description = f:getSharedMeta("postDescription") or f:getLocalMeta("postDescription") or ""
             table.insert(p, {
-                id = string.sub(file, 1, -6),
-                title = f:getSharedMeta("postTitle"),
-                date = f:getSharedMeta("postDate"),
-                author = f:getSharedMeta("author"),
-                description = f:getSharedMeta("postDescription")
+                id = id,
+                title = title,
+                date = date,
+                author = author,
+                description = description
             })
         end
 
@@ -48,6 +55,10 @@ this:addBuilders {
         table.sort(p, function(a, b)
             return sortStringDate(a.date, b.date)
         end)
+
+        if #p == 0 then
+            return "<p class='description'>No posts yet.</p>"
+        end
 
         local result = ""
         for i, v in ipairs(p) do

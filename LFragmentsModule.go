@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"strings"
+
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -26,6 +28,7 @@ func registerFragmentsModuleType(L *lua.LState) {
 	L.SetGlobal("fragments", mt)
 	// Methods and metamethods
 	L.SetField(mt, "__index", L.NewFunction(fragmentsModuleIndex))
+	L.SetField(mt, "__newindex", L.NewFunction(fragmentsModuleNewIndex))
 }
 
 func checkFragmentsModule(L *lua.LState) *LFragmentsModule {
@@ -35,6 +38,41 @@ func checkFragmentsModule(L *lua.LState) *LFragmentsModule {
 	}
 	L.ArgError(1, fmt.Sprintf("fragments module expected, got %s", L.Get(1).Type().String()))
 	return nil
+}
+
+func fragmentsModuleGetAllPages(L *lua.LState) int {
+	f := checkFragmentsModule(L)
+
+	// return a table in the format of:
+	// {
+	//    index = index.frag,
+	//    posts = {
+	//       example = example.frag,
+	//    }
+	// }
+
+	if f.FragmentCache == nil {
+		L.RaiseError("FragmentCache is not initialized.")
+		return 0
+	}
+
+	fc := f.FragmentCache
+	pages := fc.Cache
+
+	tbl := L.NewTable()
+	for name, frag := range pages {
+		if frag.Type == PAGE {
+			lf := frag.MakeLFragment()
+			ud := L.NewUserData()
+			ud.Value = lf
+			L.SetMetatable(ud, L.GetTypeMetatable(luaFragmentTypeName))
+			tbl.RawSetString(name, ud)
+		}
+	}
+
+	L.Push(tbl)
+	return 1
+
 }
 
 func fragmentsModuleGetFragment(L *lua.LState) int {
@@ -106,10 +144,86 @@ func fragmentsModuleGetPage(L *lua.LState) int {
 	return 1
 }
 
+func fragmentsModuleGetBuilders(L *lua.LState) int {
+	f := checkFragmentsModule(L)
+	if L.GetTop() < 3 {
+		L.ArgError(2, "expected kind and name")
+	}
+	kind := L.CheckString(2)
+	name := L.CheckString(3)
+
+	if f.FragmentCache == nil {
+		L.RaiseError("FragmentCache is not initialized.")
+		return 0
+	}
+
+	var ft FragmentType
+	if kind == "page" {
+		ft = PAGE
+	} else if kind == "fragment" {
+		ft = FRAGMENT
+	} else if kind == "template" {
+		ft = TEMPLATE
+	} else {
+		L.ArgError(2, "kind must be 'fragment', 'page', or 'template'")
+	}
+
+	frag := f.FragmentCache.Get(name, ft)
+	if frag == nil {
+		L.RaiseError("Fragment not found: %s", name)
+		return 0
+	}
+
+	if frag.Builders == nil {
+		frag.Builders = NewEmptyCoreTable()
+	}
+	L.Push(frag.Builders.luaType(L))
+	return 1
+}
+
+func fragmentsModuleGetPagesUnder(L *lua.LState) int {
+	f := checkFragmentsModule(L)
+	if L.GetTop() < 2 {
+		L.ArgError(2, "string expected")
+	}
+	if L.Get(2).Type() != lua.LTString {
+		L.ArgError(2, "string expected")
+	}
+	prefix := L.CheckString(2)
+
+	if f.FragmentCache == nil {
+		L.RaiseError("FragmentCache is not initialized.")
+		return 0
+	}
+
+	fc := f.FragmentCache
+	tbl := L.NewTable()
+	for name, frag := range fc.Cache {
+		if frag.Type == PAGE && strings.HasPrefix(name, prefix) {
+			lf := frag.MakeLFragment()
+			ud := L.NewUserData()
+			ud.Value = lf
+			L.SetMetatable(ud, L.GetTypeMetatable(luaFragmentTypeName))
+
+			rel := strings.TrimPrefix(name, prefix)
+			if len(rel) > 0 && rel[0] == '/' {
+				rel = rel[1:]
+			}
+			tbl.RawSetString(rel, ud)
+		}
+	}
+
+	L.Push(tbl)
+	return 1
+}
+
 func getFragmentsModuleMethods() map[string]lua.LGFunction {
 	return map[string]lua.LGFunction{
-		"getFragment": fragmentsModuleGetFragment,
-		"getPage":     fragmentsModuleGetPage,
+		"getFragment":   fragmentsModuleGetFragment,
+		"getPage":       fragmentsModuleGetPage,
+		"getAllPages":   fragmentsModuleGetAllPages,
+		"getPagesUnder": fragmentsModuleGetPagesUnder,
+		"getBuilders":   fragmentsModuleGetBuilders,
 	}
 }
 

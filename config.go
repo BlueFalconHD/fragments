@@ -1,14 +1,17 @@
 package main
 
 import (
-	"gopkg.in/yaml.v3"
 	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
 	SiteRoot      string
 	FragmentsPath string `yaml:"fragments"`
 	PagePath      string `yaml:"pages"`
+	IncludePath   string `yaml:"include"`
 	BuildPath     string `yaml:"build"`
 }
 
@@ -25,6 +28,6 @@ func GetConfiguration(path string) (*Config, error) {
 	}
 
 	// Get the root of the site, the directory in which the config file (provided path) is located
-	cfg.SiteRoot = path[:len(path)-len("config.yaml")]
+	cfg.SiteRoot = filepath.Dir(path)
 	return cfg, nil
 }

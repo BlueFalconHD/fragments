@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/charmbracelet/log"
+	"strings"
+
 	"github.com/k0kubun/pp/v3"
 	lua "github.com/yuin/gopher-lua"
-	"strings"
 )
 
 type CoreType interface {
@@ -113,9 +113,6 @@ func coreTableIndex(L *lua.LState) int {
 		L.ArgError(1, "CoreTable expected")
 		return 0
 	}
-
-	log.Info("coreTableIndex", "key", key, "value", c.v[key])
-	c.prettyPrint()
 
 	if val, ok := c.v[key]; ok {
 		L.Push(val.luaType(L))
@@ -348,19 +345,25 @@ func convertToString(v interface{}) string {
 }
 
 func getNestedValue(table *CoreTable, key string) CoreType {
+	if table == nil || table.v == nil || key == "" {
+		return NewCoreNil()
+	}
 	keys := strings.Split(key, ".")
 	current := table
 	for i, k := range keys {
+		if current == nil || current.v == nil {
+			return NewCoreNil()
+		}
 		val, ok := current.v[k]
 		if !ok {
-			log.Error("Key not found", "key", k, "table", current)
+			// Missing keys are normal; return nil quietly
 			return NewCoreNil()
 		}
 		if i == len(keys)-1 {
 			return val
 		}
 		// Intermediate keys, expect CoreTable
-		if ct, ok := val.(*CoreTable); ok {
+		if ct, ok := val.(*CoreTable); ok && ct != nil {
 			current = ct
 		} else {
 			return NewCoreNil()

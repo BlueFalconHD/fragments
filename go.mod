@@ -3,9 +3,11 @@ module github.com/bluefalconhd/fragments
 go 1.19
 
 require (
+	github.com/charmbracelet/lipgloss v0.10.0
 	github.com/charmbracelet/log v0.4.0
 	github.com/k0kubun/pp/v3 v3.3.0
 	github.com/vadv/gopher-lua-libs v0.5.0
+	github.com/yosssi/gohtml v0.0.0-20201013000340-ee4748c638f4
 	github.com/yuin/goldmark v1.7.8
 	github.com/yuin/gopher-lua v1.1.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -19,7 +21,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cbroglie/mustache v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
-	github.com/charmbracelet/lipgloss v0.10.0 // indirect
 	github.com/cheggaaa/pb/v3 v3.0.5 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/fatih/color v1.7.0 // indirect

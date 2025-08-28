@@ -7,13 +7,7 @@ this:setTemplate("page")
 -- author
 
 ~~~
-
-<h1>${postTitle}</h1>
-<p>${postDescription}</p>
-<p>${postDate} - ${author}</p>
-
-=================================
-
-@{markdown[[${CONTENT}]]}
-
-=================================
+<article>
+    <h1>${postTitle}</h1>
+    @{markdown[[${CONTENT}]]}
+</article>

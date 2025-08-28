@@ -4,6 +4,8 @@
 fragments: "fragment"
 pages: "page"
 
-# build directory
-build: "build"
+# directory where extra files (stylesheets, scripts, images) are stored to be copied to the output directory
+include: "include"
 
+# directory where resulting pages are stored
+build: "build"

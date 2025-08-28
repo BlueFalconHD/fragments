@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 	lua "github.com/yuin/gopher-lua"
-	"strings"
 )
 
 // Custom error interfaces and types
@@ -155,14 +156,13 @@ type MetaReferenceNode struct {
 }
 
 func (n *MetaReferenceNode) Evaluate(f *Fragment, _ *lua.LState) (string, error) {
-	// Get the value from the fragment's shared metadata first
-	value := f.SharedMeta.v[n.Key]
-	if value == nil {
-		// If the key is not found in the shared metadata, get it from the local metadata
-		value = f.LocalMeta.v[n.Key]
+	// Support nested keys like "site.title" by checking both shared and local meta
+	value := getNestedValue(f.SharedMeta, n.Key)
+	if _, isNil := value.(*CoreNil); isNil {
+		value = getNestedValue(&f.LocalMeta, n.Key)
 	}
 
-	if value == nil {
+	if _, isNil := value.(*CoreNil); isNil {
 		return "", &EvaluationError{
 			Line:     n.Line(),
 			Column:   n.Column(),
@@ -351,8 +351,11 @@ func ParseCode(code string, f *Fragment) ([]Node, error) {
 				return nil, err
 			}
 			nodes = append(nodes, &FragmentReferenceNode{Name: name, Content: content, line: tok.Line, column: tok.Column})
+		case TOKEN_OPEN_BRACE:
+			nodes = append(nodes, &TextNode{Text: tok.Literal, line: tok.Line, column: tok.Column})
+		case TOKEN_CLOSE_BRACE:
+			nodes = append(nodes, &TextNode{Text: tok.Literal, line: tok.Line, column: tok.Column})
 		default:
-
 			return nil, &ParseError{
 				Line:     tok.Line,
 				Column:   tok.Column,

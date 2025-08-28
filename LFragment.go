@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/charmbracelet/log"
 	lua "github.com/yuin/gopher-lua"
 )
@@ -78,6 +79,7 @@ var fragmentMethods = map[string]lua.LGFunction{
 	"setSharedMeta": fragmentMergeSharedMeta,
 	"parent":        fragmentParent,
 	"addBuilders":   fragmentBuilders,
+	"builders":      fragmentGetBuilders,
 	"setTemplate":   fragmentSetTemplate,
 }
 
@@ -166,7 +168,7 @@ func fragmentGetBothMeta(L *lua.LState) int {
 	f := checkFragment(L)
 	key := L.CheckString(2)
 	value := getNestedValue(f.SharedMeta, key)
-	if value == nil {
+	if _, isNil := value.(*CoreNil); isNil {
 		value = getNestedValue(f.LocalMeta, key)
 	}
 	L.Push(value.luaType(L))
@@ -213,6 +215,15 @@ func fragmentBuilders(L *lua.LState) int {
 	f.Fragment.Builders.mergeMut(gt)
 
 	return 0
+}
+
+func fragmentGetBuilders(L *lua.LState) int {
+	f := checkFragment(L)
+	if f.Fragment.Builders == nil {
+		f.Fragment.Builders = NewEmptyCoreTable()
+	}
+	L.Push(f.Fragment.Builders.luaType(L))
+	return 1
 }
 
 func fragmentSetTemplate(L *lua.LState) int {

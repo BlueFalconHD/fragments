@@ -1,11 +1,13 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/charmbracelet/log"
 	libs "github.com/vadv/gopher-lua-libs"
 	lua "github.com/yuin/gopher-lua"
-	"os"
-	"strings"
 )
 
 type FragmentEvaluationState int
@@ -110,37 +112,11 @@ func GetFragmentFromName(name string, fragType FragmentType, cache *FragmentCach
 		rd = cache.Config.FragmentsPath
 	}
 
-	cwd, err := os.Getwd()
+	// Build full path to fragment file using config site root and paths
+	fullPath := filepath.Join(cache.Config.SiteRoot, rd, name+".frag")
 
+	b, err := os.ReadFile(fullPath)
 	if err != nil {
-		panic(err)
-	}
-
-	// get fragment directory
-	dir := cwd + "/" + cache.Config.SiteRoot + "/" + rd
-
-	// look for the name provided + ".frag"
-
-	file, err := os.Open(dir + name + ".frag")
-
-	if err != nil {
-		panic(err)
-	}
-
-	// get size of file
-	fi, err := file.Stat()
-
-	if err != nil {
-		log.Error("Error getting file info:", err)
-		panic(err)
-	}
-
-	// read the file
-	b := make([]byte, fi.Size())
-	n, err := file.Read(b)
-
-	if err != nil {
-		log.Error("Error reading file:", err)
 		panic(err)
 	}
 
@@ -148,7 +124,7 @@ func GetFragmentFromName(name string, fragType FragmentType, cache *FragmentCach
 	return &Fragment{
 		Name:          name,
 		Type:          fragType,
-		Code:          string(b[:n]),
+		Code:          string(b),
 		Depth:         0,
 		Parent:        nil,
 		LocalMeta:     *NewEmptyCoreTable(),
@@ -157,6 +133,16 @@ func GetFragmentFromName(name string, fragType FragmentType, cache *FragmentCach
 		FragmentCache: cache,
 		Config:        cache.Config,
 	}
+}
+
+func (c *FragmentCache) GetAll(fragType FragmentType) map[string]*Fragment {
+	result := make(map[string]*Fragment)
+	for name, f := range c.Cache {
+		if f.Type == fragType {
+			result[name] = f
+		}
+	}
+	return result
 }
 
 func (c *FragmentCache) Get(name string, fragType FragmentType) *Fragment {
@@ -175,12 +161,16 @@ func (c *FragmentCache) Get(name string, fragType FragmentType) *Fragment {
 
 func (c *FragmentCache) Add(name string, f *Fragment) {
 	if c == nil {
-		*c = FragmentCache{
-			Cache:  make(map[string]*Fragment),
-			Config: f.Config,
-		}
+		// cannot initialize a nil receiver; just return to avoid panic
+		return
 	}
-	(c.Cache)[name] = f
+	if c.Cache == nil {
+		c.Cache = make(map[string]*Fragment)
+	}
+	if c.Config == nil && f != nil {
+		c.Config = f.Config
+	}
+	c.Cache[name] = f
 }
 
 func (f *Fragment) NewChildFragmentFromName(name string) *Fragment {
@@ -220,7 +210,7 @@ func (f *Fragment) Evaluate() string {
 	cleaned := strings.TrimSpace(f.Code)
 
 	// Split fragment into lua and code parts, separated by '~~~'
-	parts := strings.Split(cleaned, "~~~")
+	parts := strings.SplitN(cleaned, "~~~", 2)
 	var luaCode, code string
 	if len(parts) >= 2 {
 		luaCode = parts[0]
@@ -270,7 +260,12 @@ func (f *Fragment) Evaluate() string {
 			f.Template.SharedMeta = f.SharedMeta
 
 			// Set ${CONTENT} in the template to the result of this fragment
+			if f.Template.LocalMeta.v == nil {
+				f.Template.LocalMeta.v = make(map[string]CoreType)
+			}
 			f.Template.LocalMeta.v["CONTENT"] = NewCoreString(result.String())
+			// Add the fragment to the cache before returning so listings can discover it
+			f.FragmentCache.Add(f.Name, f)
 			// Evaluate the template
 			return f.Template.Evaluate()
 		} else {
@@ -290,6 +285,9 @@ func (f *Fragment) WithContent(content string, of *Fragment) string {
 	f.SharedMeta.mergeMut(of.SharedMeta)
 
 	// Replace ${CONTENT} in the fragment code with the content provided
+	if f.LocalMeta.v == nil {
+		f.LocalMeta.v = make(map[string]CoreType)
+	}
 	f.LocalMeta.v["CONTENT"] = NewCoreString(content)
 
 	c := f.Evaluate()
@@ -315,7 +313,9 @@ func (f *Fragment) CreateState() *lua.LState {
 	lf.registerThisFragmentAs(L, "this")
 
 	// Create and register the fragments module
-	fragmentsModule := newFragmentsModule(f.FragmentCache, "exampleSite/fragment/", "exampleSite/page/")
+	fragPath := filepath.Join(f.Config.SiteRoot, f.Config.FragmentsPath)
+	pagePath := filepath.Join(f.Config.SiteRoot, f.Config.PagePath)
+	fragmentsModule := newFragmentsModule(f.FragmentCache, fragPath, pagePath)
 	ud := L.NewUserData()
 	ud.Value = fragmentsModule
 	L.SetMetatable(ud, L.GetTypeMetatable(luaFragmentModuleTypeName))
