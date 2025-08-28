@@ -4,9 +4,8 @@
 fragments: "fragment"
 pages: "page"
 
-# default page template
-page_template: "fragment/page.frag"
+# directory where extra files (stylesheets, scripts, images) are stored to be copied to the output directory
+include: "include"
 
-# build directory
+# directory where resulting pages are stored
 build: "build"
-

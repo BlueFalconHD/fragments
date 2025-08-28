@@ -29,12 +29,12 @@ function getStringFormattedDate()
     return os.date("%Y-%m-%d")
 end
 
-this:meta {
+this:setSharedMeta {
     buildDate = getStringFormattedDate(),
     title = "Hello, World!"
 }
 
-this:builders {
+this:addBuilders {
     randomBuilder = function()
         -- Pick 40 random characters from the alphabet and append them to a string, then return it
         local alphabet = "abcdefghijklmnopqrstuvwxyz"
@@ -46,7 +46,7 @@ this:builders {
     end
 }
 
----
+~~~
 
 The content of our fragment begins here.
 
@@ -55,4 +55,59 @@ By using a dollar sign and braces, you can include metadata set in the lua envir
 To include other fragments, you can use @{fragmentName}
 
 Finally, you can dynamically run a lua function that returns a string, like so: *{randomBuilder}
+```
+
+### CLI
+
+Use the CLI to initialize a new project and build your site.
+
+Initialize a new project (creates config.yml, fragment/page/include folders, and example files):
+
+```
+fragments init mysite
+```
+
+Build the site (outputs to the configured build directory and copies include assets):
+
+```
+fragments build -c path/to/config.yml
+```
+
+Common example when run from the project root:
+
+```
+fragments build -c config.yml
+```
+
+### CI
+
+Continuous Integration runs on pushes and pull requests to the `main` branch across Linux, macOS, and Windows. It installs Go 1.19.x, downloads dependencies, vets, builds, and tests (race on non‑Windows).
+
+- Workflow file: `.github/workflows/ci.yml`
+- What it does:
+  - `go mod download`
+  - `go vet ./...`
+  - `go build ./...`
+  - `go test -race ./...` (Linux/macOS) or `go test ./...` (Windows)
+
+### Releases
+
+Releases are automated with GoReleaser on tag pushes. Tag the repository and push the tag to trigger a release build.
+
+```
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+- Workflow file: `.github/workflows/release.yml`
+- GoReleaser config: `.goreleaser.yaml`
+- Outputs:
+  - Cross‑platform archives for Linux, macOS, and Windows (amd64/arm64)
+  - SHA256 checksums
+  - GitHub Release with attached artifacts
+
+Optional local snapshot (no publish):
+
+```
+goreleaser release --snapshot --clean --config fragments/.goreleaser.yaml
 ```

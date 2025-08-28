@@ -1,19 +1,14 @@
--- lua code segment
-this:setSharedMeta("title", "Home")
-this:setSharedMeta("description", "This is the home page")
+this:setTemplate("page")
 
-function getFormattedDate()
-  return os.date("%Y-%m-%d")
-end
+this:setSharedMeta {
+    title = "Home"
+}
 
-this:setMeta("date", getFormattedDate())
-===
-
-${header}
+~~~
 
 <h1 class="title">Welcome to my site!</h1>
-<h2 class="description">This is my home page.</h2>
+<p class="description">This is a simple site built with <a href="https://github.com/bluefalconhd/fragments">Fragments</a>.</p>
+<p class="description">Latest articles below:</p>
 
-${blogposts}
-
-${footer}
+<h1>Recent Blogposts</h1>
+@{blogposts}
